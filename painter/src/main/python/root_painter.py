@@ -571,34 +571,8 @@ class RootPainter(QtWidgets.QMainWindow):
         pre_segment_count_action = QtWidgets.QAction(QtGui.QIcon(""), "Pre-Segment", self)
         options_menu.addAction(pre_segment_count_action)
         pre_segment_count_action.triggered.connect(self.open_pre_segment_count_dialog)
-
-        # change brush colors
-        change_foreground_color_action = QtWidgets.QAction(QtGui.QIcon(""),
-                                                           "Foreground brush colour",
-                                                           self)
-        options_menu.addAction(change_foreground_color_action)
-        change_foreground_color_action.triggered.connect(self.change_foreground_color)
-        change_background_color_action = QtWidgets.QAction(QtGui.QIcon(""),
-                                                           "Background brush colour",
-                                                           self)
-        options_menu.addAction(change_background_color_action)
-        change_background_color_action.triggered.connect(self.change_background_color)
-
-        brush_menu = menu_bar.addMenu("Brushes")
-        foreground_color_action = QtWidgets.QAction(QtGui.QIcon(""), "Foreground", self)
-        foreground_color_action.setShortcut("Q")
-        brush_menu.addAction(foreground_color_action)
-        foreground_color_action.triggered.connect(self.set_foreground_color)
-
-        background_color_action = QtWidgets.QAction(QtGui.QIcon(""), "Background", self)
-        background_color_action.setShortcut("W")
-        brush_menu.addAction(background_color_action)
-        background_color_action.triggered.connect(self.set_background_color)
-
-        eraser_color_action = QtWidgets.QAction(QtGui.QIcon(""), "Eraser", self)
-        eraser_color_action.setShortcut("E")
-        brush_menu.addAction(eraser_color_action)
-        eraser_color_action.triggered.connect(self.set_eraser_color)
+        self.menu_bar = menu_bar
+        self.add_brushes()
 
         ## View menu
         # Fit to view
@@ -668,6 +642,22 @@ class RootPainter(QtWidgets.QMainWindow):
         self.add_measurements_menu(menu_bar)
         self.add_extras_menu(menu_bar)
 
+    def add_brush(self, name, color_val, shortcut=None):
+        color_action = QtWidgets.QAction(QtGui.QIcon(""), name, self)
+        if shortcut:
+            color_action.setShortcut(shortcut)
+        self.brush_menu.addAction(color_action)
+        color_action.triggered.connect(partial(self.set_color,
+                                               color=QtGui.QColor(*color_val)))
+        if self.scene.brush_color == None:
+            self.scene.brush_color = QtGui.QColor(*color_val)
+    
+    def add_brushes(self):
+        self.brush_menu = self.menu_bar.addMenu("Brushes")
+        self.add_brush('Foreground', (255, 0, 0, 180), '1')
+        self.add_brush('Background', (0, 255, 0, 180), '2')
+        self.add_brush('Yellow', (255, 255, 0, 180), '3')
+        self.add_brush('Eraser', (255, 105, 180, 180), 'E')
 
     def add_measurements_menu(self, menu_bar):
         # Measurements
@@ -769,44 +759,8 @@ class RootPainter(QtWidgets.QMainWindow):
             self.annot_visible = True
         self.vis_widget.annot_checkbox.setChecked(self.annot_visible)
 
-    def set_foreground_color(self, _event):
-        self.scene.brush_color = self.scene.foreground_color
-        self.update_cursor()
-
-    def change_foreground_color(self, _event):
-        foreground_set = (self.scene.brush_color == self.scene.foreground_color)
-        show_alpha_option = QtWidgets.QColorDialog.ColorDialogOption(1)
-        new_color = QtWidgets.QColorDialog.getColor(
-            self.scene.foreground_color,
-            options=show_alpha_option)
-
-        if new_color.isValid():
-            self.scene.foreground_color = new_color
-
-        if foreground_set:
-            self.scene.brush_color = self.scene.foreground_color
-            self.update_cursor()
-
-    def change_background_color(self, _event):
-        background_set = (self.scene.brush_color == self.scene.background_color)
-        show_alpha_option = QtWidgets.QColorDialog.ColorDialogOption(1)
-        new_color = QtWidgets.QColorDialog.getColor(
-            self.scene.background_color,
-            options=show_alpha_option)
-
-        if new_color.isValid():
-            self.scene.background_color = new_color
-
-        if background_set:
-            self.scene.brush_color = self.scene.background_color
-            self.update_cursor()
-
-    def set_background_color(self, _event):
-        self.scene.brush_color = self.scene.background_color
-        self.update_cursor()
-
-    def set_eraser_color(self, _event):
-        self.scene.brush_color = self.scene.eraser_color
+    def set_color(self, _event, color=None):
+        self.scene.brush_color = color
         self.update_cursor()
 
     def update_cursor(self):

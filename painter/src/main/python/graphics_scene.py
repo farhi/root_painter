@@ -33,17 +33,10 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         # history is a list of pixmaps
         self.history = []
         self.redo_list = []
-
         self.last_x = None
         self.last_y = None
         self.annot_pixmap = None
-
-        # These globals should eventually be loaded from a configuation file, which would
-        # be created on project creation.
-        self.foreground_color = QtGui.QColor(255, 0, 0, 180)
-        self.background_color = QtGui.QColor(0, 255, 0, 180)
-        self.eraser_color = QtGui.QColor(255, 105, 180, 0)
-        self.brush_color = self.foreground_color
+        self.brush_color = None
 
 
     def undo(self):
