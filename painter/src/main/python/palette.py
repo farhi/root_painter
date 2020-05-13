@@ -30,8 +30,8 @@ class BrushEditWidget(QtWidgets.QWidget):
     Provide a way for a user to edit the name and colour of a brush
     """
     
-    # I don't need this event yet but lets keep it around just in case.
     changed = QtCore.pyqtSignal()
+    removed = QtCore.pyqtSignal()
 
     def __init__(self, name, rgba):
         super().__init__()
@@ -48,13 +48,19 @@ class BrushEditWidget(QtWidgets.QWidget):
         self.name_edit.textChanged.connect(self.text_changed)
         self.layout.addWidget(self.name_edit)
 
-        self.btn = QtWidgets.QPushButton(' ')
-        self.btn.setStyleSheet(f"background-color:{self.color.name()};")
-        self.btn.clicked.connect(self.btn_clicked)
-        self.layout.addWidget(self.btn)
+        self.color_btn = QtWidgets.QPushButton(' ')
+        self.color_btn.setStyleSheet(f"background-color:{self.color.name()};")
+        self.color_btn.clicked.connect(self.color_btn_clicked)
+        self.layout.addWidget(self.color_btn)
+
+        self.remove_btn = QtWidgets.QPushButton('Remove')
+        self.remove_btn.clicked.connect(self.removed.emit)
+        self.layout.addWidget(self.remove_btn)
+
         self.setLayout(self.layout)
 
-    def btn_clicked(self):
+
+    def color_btn_clicked(self):
         # When the user clicks the color label. Let them pick a new color
         show_alpha_option = QtWidgets.QColorDialog.ColorDialogOption(1)
         new_color = QtWidgets.QColorDialog.getColor(
@@ -63,7 +69,7 @@ class BrushEditWidget(QtWidgets.QWidget):
 
         if new_color.isValid():
             self.color = new_color
-            self.btn.setStyleSheet(f"background-color:{self.color.name()};")
+            self.color_btn.setStyleSheet(f"background-color:{self.color.name()};")
             self.changed.emit()
 
     def text_changed(self):
@@ -121,8 +127,8 @@ class PaletteEditWidget(QtWidgets.QWidget):
     def get_new_name(self):
         return f"Brush {len(self.brush_widgets)}"
 
-    def add_brush(self, name=None, rgba=None):
 
+    def add_brush(self, name=None, rgba=None):
         if not name:
             name = self.get_new_name()
         if not rgba:
@@ -130,4 +136,13 @@ class PaletteEditWidget(QtWidgets.QWidget):
 
         brush = BrushEditWidget(name, rgba)
         self.brush_widgets.append(brush)
+
+        brush.removed.connect(self.remove_brush)
         self.brushes_layout.addWidget(brush)
+
+    def remove_brush(self):
+        brush = self.sender()
+        self.brush_widgets.remove(brush)
+        self.brushes_layout.removeWidget(brush)
+
+
