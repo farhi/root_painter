@@ -74,11 +74,12 @@ def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
                                 (background.shape[0]//2,
                                  background.shape[1]//2, 3))
             annot = resize(annot, (annot.shape[0]//2, annot.shape[1]//2, 3))
-        annot = rgb2gray(annot)
-        annot = img_as_ubyte(annot)
+        annot_gray = rgb2gray(annot)
+
+        annot = img_as_ubyte(annot[:, :, :3])
         background = img_as_ubyte(background)
-        comp_right = np.copy(background)
-        comp_right[annot > 0] = [255, 0, 0]
+        comp_right = np.copy(annot)
+        comp_right[annot_gray == 0] = background
         # if width is more than 20% bigger than height then vstack
         if background.shape[1] > background.shape[0] * 1.2:
             comp = np.vstack((background, comp_right))
