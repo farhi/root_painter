@@ -26,6 +26,7 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtCore
 
 from im_utils import is_image
+from palette import PaletteEditWidget
 from name_edit_widget import NameEditWidget
 
 class CreateProjectWidget(QtWidgets.QWidget):
@@ -51,6 +52,10 @@ class CreateProjectWidget(QtWidgets.QWidget):
         self.add_im_dir_widget()
         self.add_radio_widget()
         self.add_model_btn()
+        
+        self.palette_edit_widget = PaletteEditWidget()
+        self.layout.addWidget(self.palette_edit_widget)
+
         self.add_info_label()
         self.add_create_btn()
 
