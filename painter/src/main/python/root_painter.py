@@ -138,6 +138,9 @@ class RootPainter(QtWidgets.QMainWindow):
 
             self.message_dir = self.proj_location / 'messages'
 
+
+            self.brush_data = settings['brushes']
+
             # If there are any annotations which have already been saved
             # then go through the annotations in the order specified
             # by self.image_fnames
@@ -653,11 +656,10 @@ class RootPainter(QtWidgets.QMainWindow):
             self.scene.brush_color = QtGui.QColor(*color_val)
     
     def add_brushes(self):
+
         self.brush_menu = self.menu_bar.addMenu("Brushes")
-        self.add_brush('Foreground', (255, 0, 0, 180), '1')
-        self.add_brush('Background', (0, 255, 0, 180), '2')
-        self.add_brush('Yellow', (255, 255, 0, 180), '3')
-        self.add_brush('Eraser', (255, 105, 180, 180), 'E')
+        for name, rgba, shortcut in self.brush_data:
+            self.add_brush(name, rgba, shortcut)
 
     def add_measurements_menu(self, menu_bar):
         # Measurements
