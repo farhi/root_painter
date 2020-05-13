@@ -361,7 +361,7 @@ class RootPainter(QtWidgets.QMainWindow):
 
         self.add_about_menu(menu_bar)
 
-        ### Add project btns to open window (so it shows something useful)
+        # Add project btns to open window (so it shows something useful)
         project_btn_widget = QtWidgets.QWidget()
         self.setCentralWidget(project_btn_widget)
 
