@@ -89,9 +89,12 @@ def get_random_rgba():
 class PaletteEditWidget(QtWidgets.QWidget):
     """ Add, edit and remove brushes """
 
+    changed = QtCore.pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.initUI()
+
 
     def initUI(self):
         label = QtWidgets.QLabel()
@@ -111,10 +114,7 @@ class PaletteEditWidget(QtWidgets.QWidget):
         # name, colour (r,g,b,a), keyboard shortcut
         default_brushes = [
             ('Foreground', (255, 0, 0, 180), '1'),
-            ('Background', (0, 255, 0, 180), '2'),
-            # ('Yellow', (255, 255, 0, 180), '3'),
-            ('Eraser', (255, 105, 180, 0), 'E')
-        ]
+                    ]
         
         self.brush_widgets = []
         for name, rgba, _ in default_brushes:
@@ -139,10 +139,27 @@ class PaletteEditWidget(QtWidgets.QWidget):
 
         brush.removed.connect(self.remove_brush)
         self.brushes_layout.addWidget(brush)
+        self.changed.emit()
 
     def remove_brush(self):
         brush = self.sender()
         self.brush_widgets.remove(brush)
         self.brushes_layout.removeWidget(brush)
+        self.changed.emit()
 
 
+    def get_brush_data(self):
+        """ Used for saving the brush data to JSON file """
+       
+        # These two cannot be edited or removed.    
+        brush_data = [
+            ('Background', (0, 255, 0, 180), 'W'),
+            ('Eraser', (255, 105, 180, 0), 'E')
+        ]
+
+        for brush_widget in self.brush_widgets:
+            # name, rgba, keyboard shortcut
+            brush_data.append([brush_widget.name,
+                               brush_widget.color.getRgb(),
+                               str(len(brush_data)-1)])
+        return brush_data

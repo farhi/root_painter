@@ -54,10 +54,13 @@ class CreateProjectWidget(QtWidgets.QWidget):
         self.add_model_btn()
         
         self.palette_edit_widget = PaletteEditWidget()
+        self.palette_edit_widget.changed.connect(self.validate)
         self.layout.addWidget(self.palette_edit_widget)
 
         self.add_info_label()
         self.add_create_btn()
+
+
 
     def add_im_dir_widget(self):
         # Add specify image directory button
@@ -150,6 +153,12 @@ class CreateProjectWidget(QtWidgets.QWidget):
             self.info_label.setText(message)
             self.create_project_btn.setEnabled(False)
             return
+
+        if len(self.palette_edit_widget.get_brush_data()) < 3:
+            self.info_label.setText(f"At least one foreground brush must be specified")
+            self.create_project_btn.setEnabled(False)
+            return
+
         self.project_location = os.path.join('projects', self.proj_name)
         if os.path.exists(os.path.join(self.sync_dir, self.project_location)):
             self.info_label.setText(f"Project with name {self.proj_name} already exists")
@@ -169,7 +178,6 @@ class CreateProjectWidget(QtWidgets.QWidget):
 
         self.photo_dialog.fileSelected.connect(output_selected)
         self.photo_dialog.open()
-
 
     def select_model(self):
         options = QtWidgets.QFileDialog.Options()
@@ -235,7 +243,8 @@ class CreateProjectWidget(QtWidgets.QWidget):
             'dataset': dataset,
             'original_model_file': original_model_file,
             'location': str(PurePosixPath(project_location)),
-            'file_names': all_fnames
+            'file_names': all_fnames,
+            'brushes': self.palette_edit_widget.get_brush_data()
         }
         with open(proj_file_path, 'w') as json_file:
             json.dump(project_info, json_file, indent=4)
