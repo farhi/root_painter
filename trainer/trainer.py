@@ -211,44 +211,26 @@ class Trainer():
         defined_total = 0
         loss_sum = 0
         for step, (photo_tiles,
-                   foreground_tiles,
+                   target_tiles,
                    defined_tiles) in enumerate(train_loader):
 
             self.check_for_instructions()
             photo_tiles = photo_tiles.cuda()
-            foreground_tiles = foreground_tiles.cuda()
+            target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
             self.optimizer.zero_grad()
             outputs = self.model(photo_tiles)
             softmaxed = softmax(outputs, 1)
-            # just the foreground probability.
-            foreground_probs = softmaxed[:, 1, :]
+
             # remove any of the predictions for which we don't have ground truth
             # Set outputs to 0 where annotation undefined so that
             # The network can predict whatever it wants without any penalty.
             outputs[:, 0] *= defined_tiles
             outputs[:, 1] *= defined_tiles
+            outputs[:, 2] *= defined_tiles
             loss = criterion(outputs, foreground_tiles)
             loss.backward()
             self.optimizer.step()
-            foreground_probs *= defined_tiles
-            predicted = foreground_probs > 0.5
-
-            # we only want to calculate metrics on the
-            # part of the predictions for which annotations are defined
-            # so remove all predictions and foreground labels where
-            # we didn't have any annotation.
-
-            defined_list = defined_tiles.view(-1)
-            preds_list = predicted.view(-1)[defined_list > 0]
-            foregrounds_list = foreground_tiles.view(-1)[defined_list > 0]
-
-            # # calculate all the false positives, false negatives etc
-            tps += torch.sum((foregrounds_list == 1) * (preds_list == 1)).cpu().numpy()
-            tns += torch.sum((foregrounds_list == 0) * (preds_list == 0)).cpu().numpy()
-            fps += torch.sum((foregrounds_list == 0) * (preds_list == 1)).cpu().numpy()
-            fns += torch.sum((foregrounds_list == 1) * (preds_list == 0)).cpu().numpy()
-            defined_total += torch.sum(defined_list > 0).cpu().numpy()
             loss_sum += loss.item() # float
             sys.stdout.write(f"Training {(step+1) * self.bs}/"
                              f"{len(train_loader.dataset)} "
@@ -259,8 +241,6 @@ class Trainer():
 
         duration = round(time.time() - epoch_start, 3)
         print('epoch train duration', duration)
-        self.log_metrics('train', get_metrics(tps, fps, tns, fns,
-                                              defined_total, duration))
         before_val_time = time.time()
         self.validation()
         print('epoch validation duration', time.time() - before_val_time)
