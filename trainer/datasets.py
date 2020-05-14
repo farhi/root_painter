@@ -87,13 +87,21 @@ class UNetTransformer():
 
 
 class TrainDataset(Dataset):
-    def __init__(self, train_annot_dir, dataset_dir, in_w, out_w):
+    def __init__(self, train_annot_dir, dataset_dir, in_w, out_w,
+                 target_classes):
         """
         in_w and out_w are the tile size in pixels
+
+        target_classes is a list of the possible output classes
+            the position in the list is the index (target) to be predicted by
+            the network in the output.
+            The value of the elmenent is the rgb (int, int, int) used to draw this 
+            class in the annotation.
         """
         self.in_w = in_w
         self.out_w = out_w
         self.train_annot_dir = train_annot_dir
+        self.target_classes = target_classes
         self.dataset_dir = dataset_dir
         self.augmentor = UNetTransformer()
 
@@ -114,7 +122,7 @@ class TrainDataset(Dataset):
         padded_im = im_utils.pad(image, im_pad_w)
 
         # This speeds up the padding.
-        annot = annot[:, :, :2]
+        annot = annot[:, :, :3]
         padded_annot = im_utils.pad(annot, im_pad_w)
         right_lim = padded_w - self.in_w
         bottom_lim = padded_h - self.in_w
@@ -135,7 +143,7 @@ class TrainDataset(Dataset):
         im_tile = padded_im[y_in:y_in+self.in_w,
                             x_in:x_in+self.in_w]
 
-        assert annot_tile.shape == (self.in_w, self.in_w, 2), (
+        assert annot_tile.shape == (self.in_w, self.in_w, 3), (
             f" shape is {annot_tile.shape}")
 
         assert im_tile.shape == (self.in_w, self.in_w, 3), (
@@ -146,20 +154,42 @@ class TrainDataset(Dataset):
         im_tile, annot_tile = self.augmentor.transform(im_tile, annot_tile)
         im_tile = im_utils.normalize_tile(im_tile)
 
-        foreground = np.array(annot_tile)[:, :, 0]
-        background = np.array(annot_tile)[:, :, 1]
-
         # Annotion is cropped post augmentation to ensure
         # elastic grid doesn't remove the edges.
-        foreground = foreground[tile_pad:-tile_pad, tile_pad:-tile_pad]
-        background = background[tile_pad:-tile_pad, tile_pad:-tile_pad]
-        # mask specified pixels of annotation which are defined
-        mask = foreground + background
+        annot_tile = annot_tile[tile_pad:-tile_pad, tile_pad:-tile_pad]
+
+        # get the specific RGB channels
+        r_channel = annot[:, :, 0]
+        g_channel = annot[:, :, 1]
+        b_channel = annot[:, :, 2]
+
+        # mask defines all places where something is defined.
+        mask = (r_channel + g_channel + b_channel) > 0
+        
+        # target defines the class at each pixel location.
+        target = np.zeros(r_channel.shape)
+
+        # We have multiple classes.
+        for i, target_class in enumerate(self.target_classes):
+            # each class has an RGB color associated with it.
+            class_r, class_g, class_b = target_class
+
+            # we need to get a map of all places where this class is
+            # defined in the annotation. E.g all places where this
+            # color exists.
+            class_map = ((r_channel == class_r) *
+                         (g_channel == class_g) *
+                         (b_channel == class_b))
+            target[class_map] = i
+
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)
-        foreground = foreground.astype(np.int64)
-        foreground = torch.from_numpy(foreground)
+
+        target = target.astype(np.int64)
+        target = torch.from_numpy(target)
+
         im_tile = im_tile.astype(np.float32)
         im_tile = np.moveaxis(im_tile, -1, 0)
         im_tile = torch.from_numpy(im_tile)
-        return im_tile, foreground, mask
+
+        return im_tile, target, mask
