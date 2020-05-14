@@ -69,8 +69,6 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs):
     """
     Return the TP, FP, TN, FN, defined_sum, duration
     for the {cnn} on the validation set
-
-    TODO - This is too similar to the train loop. Merge both and use flags.
     """
     start = time.time()
     fnames = ls(val_annot_dir)
