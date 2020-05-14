@@ -191,8 +191,6 @@ class Trainer():
         val_annot_dir = self.train_config['val_annot_dir']
         if not [is_photo(a) for a in ls(train_annot_dir)]:
             return
-        if not [is_photo(a) for a in ls(val_annot_dir)]:
-            return
 
         if self.first_loop:
             self.first_loop = False
