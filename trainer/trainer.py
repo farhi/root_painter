@@ -266,8 +266,6 @@ class Trainer():
              beat the previous model for {max_epochs}
         """
         model_dir = self.train_config['model_dir']
-        # TODO consider implementing checkpointer class to maintain
-        # this state.
         get_val_metrics = partial(model_utils.get_val_metrics,
                                   val_annot_dir=self.train_config['val_annot_dir'],
                                   dataset_dir=self.train_config['dataset_dir'],
