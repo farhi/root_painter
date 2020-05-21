@@ -55,10 +55,10 @@ def get_metrics(tp:int, fp:int, tn:int, fn:int) -> dict:
         precision = recall = f1 = iou = float('NaN')
     return {
         "accuracy": accuracy,
-        "tps": tn,
-        "fps": fp,
-        "fns": fn,
-        "tps": tp,
+        "tp": tp,
+        "fp": fp,
+        "tn": tn,
+        "fn": fn,
         "precision": precision,
         "recall": recall,
         "dice": f1,
