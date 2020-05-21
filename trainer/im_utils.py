@@ -79,6 +79,56 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
         raise Exception('Could not load annotation and photo')
 
 
+def get_class_map(annot, class_rgb):
+    """ Return binary map defining locations of an image which
+        are equal to class_rgb """
+    class_r, class_g, class_b = class_rgb
+
+    # get the specific RGB channels
+    r_channel = annot[:, :, 0]
+    g_channel = annot[:, :, 1]
+    b_channel = annot[:, :, 2]
+
+    # we need to get a map of all places where this class is
+    # defined in the annotation. E.g all places where this
+    # color exists.
+    class_map = ((r_channel == class_r) *
+                 (g_channel == class_g) *
+                 (b_channel == class_b))
+    return class_map
+
+
+def annot_to_target_and_mask(annot, target_classes):
+    """
+    The annotation is an image where each pixel has an RGB value
+    Convert this to a 2D image where each pixel is a value from 0 to maximum class index
+    Defining the specific class at that location in the image.
+    """
+    r_channel = annot[:, :, 0]
+    g_channel = annot[:, :, 1]
+    b_channel = annot[:, :, 2]
+
+    # mask defines all places where something is defined.
+    mask = (r_channel + g_channel + b_channel) > 0
+    
+    # target defines the class at each pixel location.
+    target = np.zeros(r_channel.shape)
+
+    # We have multiple classes.
+    for i, target_class in enumerate(target_classes):
+        # each class has an RGB color associated with it.
+        class_r, class_g, class_b = target_class
+
+        # we need to get a map of all places where this class is
+        # defined in the annotation. E.g all places where this
+        # color exists.
+        class_map = ((r_channel == class_r) *
+                     (g_channel == class_g) *
+                     (b_channel == class_b))
+        target[class_map] = i
+    return target
+
+
 def pad(image, width: int, mode='reflect', constant_values=0):
     # only pad the first two dimensions
     pad_width = [(width, width), (width, width)]

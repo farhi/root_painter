@@ -28,7 +28,7 @@ from PIL import Image
 from skimage import img_as_float32
 from skimage.exposure import rescale_intensity
 
-from im_utils import load_train_image_and_annot
+from im_utils import load_train_image_and_annot, annot_to_target_and_mask
 from file_utils import ls
 import im_utils
 import elastic
@@ -157,30 +157,7 @@ class TrainDataset(Dataset):
         # Annotion is cropped post augmentation to ensure
         # elastic grid doesn't remove the edges.
         annot_tile = annot_tile[tile_pad:-tile_pad, tile_pad:-tile_pad]
-
-        # get the specific RGB channels
-        r_channel = annot[:, :, 0]
-        g_channel = annot[:, :, 1]
-        b_channel = annot[:, :, 2]
-
-        # mask defines all places where something is defined.
-        mask = (r_channel + g_channel + b_channel) > 0
-        
-        # target defines the class at each pixel location.
-        target = np.zeros(r_channel.shape)
-
-        # We have multiple classes.
-        for i, target_class in enumerate(self.target_classes):
-            # each class has an RGB color associated with it.
-            class_r, class_g, class_b = target_class
-
-            # we need to get a map of all places where this class is
-            # defined in the annotation. E.g all places where this
-            # color exists.
-            class_map = ((r_channel == class_r) *
-                         (g_channel == class_g) *
-                         (b_channel == class_b))
-            target[class_map] = i
+        target, mask = annot_to_target_and_mask(annot_tile)
 
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)
