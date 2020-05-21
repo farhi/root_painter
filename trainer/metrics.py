@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # pylint: disable=C0111,R0913
 from datetime import datetime
+from collections import namedtuple
 import numpy as np
 
 def get_metrics_str(all_metrics, to_use=None):
@@ -37,13 +38,14 @@ def get_metric_csv_row(metrics):
     return ','.join([str(p) for p in parts]) + '\n'
 
 
-def get_metrics(tp, fp, tn, fn, defined_sum, duration, loss=float('nan')):
-    total = (tp + tn + fp + fn)
-    accuracy = (tp + tn) / total
+def get_metrics(tp:int, fp:int, tn:int, fn:int) -> dict:
+    # for the mtrics function in model utils
     assert not np.isnan(tp)
     assert not np.isnan(fp)
+    assert not np.isnan(tn)
     assert not np.isnan(fn)
-    assert not np.isnan(fp)
+    total = (tp + tn + fp + fn)
+    accuracy = (tp + tn) / total
     if tp > 0:
         precision = tp / (tp + fp)
         recall = tp / (tp + fn)
@@ -53,17 +55,13 @@ def get_metrics(tp, fp, tn, fn, defined_sum, duration, loss=float('nan')):
         precision = recall = f1 = iou = float('NaN')
     return {
         "accuracy": accuracy,
-        "TN": tn,
-        "FP": fp,
-        "FN": fn,
-        "TP": tp,
+        "tps": tn,
+        "fps": fp,
+        "fns": fn,
+        "tps": tp,
         "precision": precision,
         "recall": recall,
-        "f1": f1,
-        "iou": iou,
+        "dice": f1,
         "true_mean": (tp + fn) / total,
-        "pred_mean": (tp + fp) / total,
-        "defined": defined_sum,
-        "duration": duration,
-        "loss": loss,
+        "pred_mean": (tp + fp) / total
     }
