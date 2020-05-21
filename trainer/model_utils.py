@@ -151,7 +151,7 @@ def save_if_better(model_dir, cur_model, prev_model_path,
         return True
     return False
 
-def model_file_segment(model_paths, image, bs, in_w, out_w, classes)
+def model_file_segment(model_paths, image, bs, in_w, out_w, classes):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
     pred_count = 0
