@@ -36,7 +36,7 @@ from loss import combined_loss as criterion
 
 from datasets import TrainDataset
 from metrics import get_metrics, get_metrics_str, get_metric_csv_row
-from model_utils import ensemble_segment
+from model_utils import model_file_segment
 from model_utils import create_first_model_with_random_weights
 import model_utils
 from model_utils import save_if_better
@@ -374,23 +374,20 @@ class Trainer():
                 raise Exception(f"image {fname} too small to segment. Width "
                                 f" and height must be at least {self.in_w}")
             seg_start = time.time()
-            segmented = ensemble_segment(model_paths, photo, self.bs,
-                                         self.in_w, self.out_w)
+            _, segmented = model_file_segment(model_paths, photo, self.bs,
+                                           self.in_w, self.out_w, self.classes_rgb)
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
                 # create a version with alpha channel
                 warnings.simplefilter("ignore")
-                seg_alpha = np.zeros((segmented.shape[0], segmented.shape[1], 4))
-                seg_alpha[segmented > 0] = [0, 1.0, 1.0, 0.7]
-
                 if sync_save:
                     # other wise do sync because we don't want to delete the segment
                     # instruction too early.
-                    save_then_move(out_path, seg_alpha)
+                    save_then_move(out_path, segmented)
                 else:
                     # TODO find a cleaner way to do this.
                     # if more than one file then optimize speed over stability.
                     x = threading.Thread(target=save_then_move,
-                                         args=(out_path, seg_alpha))
+                                         args=(out_path, segmented))
                     x.start()
