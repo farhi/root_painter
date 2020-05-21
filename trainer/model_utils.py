@@ -151,36 +151,20 @@ def save_if_better(model_dir, cur_model, prev_model_path,
         return True
     return False
 
-def ensemble_segment(model_paths, image, bs, in_w, out_w,
-                     threshold=0.5):
+def model_file_segment(model_paths, image, bs, in_w, out_w, classes)
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
     pred_count = 0
     # then add predictions from the previous models to form an ensemble
-    for model_path in model_paths:
-        cnn = load_model(model_path)
-        cnn.half()
-        preds = unet_segment(cnn, image,
-                             bs, in_w, out_w, threshold=None)
-        if pred_sum is not None:
-            pred_sum += preds
-        else:
-            pred_sum = preds
-        pred_count += 1
-        # get flipped version too (test time augmentation)
-        flipped_im = np.fliplr(image)
-        flipped_pred = unet_segment(cnn, flipped_im, bs, in_w,
-                                    out_w, threshold=None)
-        pred_sum += np.fliplr(flipped_pred)
-        pred_count += 1
-    foreground_probs = pred_sum / pred_count
-    predicted = foreground_probs > threshold
-    predicted = predicted.astype(int)
+    cnn = load_model(model_paths[0])
+    cnn.half()
+    preds = segment(cnn, image, bs, in_w, out_w, classes)
     return predicted
 
-def segment(cnn, image, bs, in_w, out_w, classes):
+def segment(cnn, image, bs, in_w, out_w, classes_rgb):
     """
-    Return the most likely class for each pixel. 
+    Return image for each class.
+    And return RGB representation using classes_rgb
     """
     assert image.shape[0] > in_w, str(image.shape[0])
     assert image.shape[1] > in_w, str(image.shape[1])
@@ -219,7 +203,11 @@ def segment(cnn, image, bs, in_w, out_w, classes):
 
     reconstructed = im_utils.reconstruct_from_tiles(output_tiles, coords,
                                                     image.shape[:-1])
-    class_preds = np.array(([classes] + list(reconstructed.shape)))
-    for i in range(len(classes)):
-        class_preds[i] = (reconstructed == 1)
-    return class_preds
+    # rgb image
+    rgb_output = np.array(list(reconstructed.shape) + [4])
+    # channel for each class
+    class_preds = np.array(([classes_rgb] + list(reconstructed.shape)))
+    for i, c in enumerate(classes_rgb):
+        class_preds[i] = (reconstructed == i)
+        rgb_output[class_preds[i]] = c
+    return class_preds, rgb_output
