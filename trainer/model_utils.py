@@ -30,6 +30,7 @@ from unet import UNetGNRes
 from metrics import get_metrics
 from file_utils import ls
 
+
 def get_latest_model_paths(model_dir, k):
     fnames = ls(model_dir)
     fnames = sorted(fnames)[-k:]
@@ -65,53 +66,74 @@ def get_prev_model(model_dir):
     prev_model = load_model(prev_path)
     return prev_model, prev_path
 
+
+def multi_class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
+    """
+    What information does this function need?
+
+    We need to be able to make predictions using the CNN for a full image.
+    I.e not just part of the image.
+    """
+    class_metrics = [{'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0}]
+    class_metrics *= len(classes_rgb)
+
+    # for each image 
+    for fname, annot in get_val_annots():
+
+        # remove parts where annotation is not defined e.g alhpa=0
+        a_channel = annot[:, :, 3]
+        y_defined = (a_channel > 0).astype(np.int).reshape(-1)
+
+        # load sed, returns a channel for each class
+        seg = get_seg(fname)
+        
+        # for each class
+        for i, class_rgb in enumerate(classes_rgb):
+            y_true = im_utils.get_class_map(annot, class_rgb)
+            y_pred = seg[i]
+            
+            # only compute metrics on regions where annotation is defined.
+            y_true = y_true.reshape(-1)[y_defined > 0]
+            y_pred = y_pred.reshape(-1)[y_defined > 0]
+
+            class_metrics[i]['tp'] += np.sum(np.logical_and(y_pred == 1,
+                                                            y_true == 1))
+            class_metrics[i]['tn'] += np.sum(np.logical_and(y_pred == 0,
+                                                            y_true == 0))
+            class_metrics[i]['fp'] += np.sum(np.logical_and(y_pred == 1,
+                                                            y_true == 0))
+            class_metrics[i]['fn'] += np.sum(np.logical_and(y_pred == 0,
+                                                            y_true == 1))
+    for i, m in enumerate(class_metrics):
+        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'])
+    return class_metrics
+
+
 def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs):
-    """
-    Return the TP, FP, TN, FN, defined_sum, duration
-    for the {cnn} on the validation set
-    """
+
     start = time.time()
     fnames = ls(val_annot_dir)
     fnames = [a for a in fnames if im_utils.is_photo(a)]
     cnn.half()
-    # TODO: In order to speed things up, be a bit smarter here
-    # by only segmenting the parts of the image where we have
-    # some annotation defined.
-    # implement a 'partial segment' which exlcudes tiles with no
-    # annotation defined.
-    tps = 0
-    fps = 0
-    tns = 0
-    fns = 0
-    defined_sum = 0
-    for fname in fnames:
-        annot_path = os.path.join(val_annot_dir,
-                                  os.path.splitext(fname)[0] + '.png')
-        annot = imread(annot_path)
-        annot = np.array(annot)
-        foreground = annot[:, :, 0].astype(bool).astype(int)
-        background = annot[:, :, 1].astype(bool).astype(int)
+    
+    def get_seg(fname):
         image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
         image_path = glob.glob(image_path_part + '.*')[0]
         image = im_utils.load_image(image_path)
-        predicted = unet_segment(cnn, image, bs, in_w,
-                                 out_w, threshold=0.5)
-        # mask defines which pixels are defined in the annotation.
-        mask = foreground + background
-        mask = mask.astype(bool).astype(int)
-        predicted *= mask
-        predicted = predicted.astype(bool).astype(int)
-        y_defined = mask.reshape(-1)
-        y_pred = predicted.reshape(-1)[y_defined > 0]
-        y_true = foreground.reshape(-1)[y_defined > 0]
-        tps += np.sum(np.logical_and(y_pred == 1, y_true == 1))
-        tns += np.sum(np.logical_and(y_pred == 0, y_true == 0))
-        fps += np.sum(np.logical_and(y_pred == 1, y_true == 0))
-        fns += np.sum(np.logical_and(y_pred == 0, y_true == 1))
-        defined_sum += np.sum(y_defined > 0)
-    duration = round(time.time() - start, 3)
-    metrics = get_metrics(tps, fps, tns, fns, defined_sum, duration)
-    return metrics
+        predicted = segment(cnn, image, bs, in_w, out_w)
+        return predicted
+
+    def get_val_annots(fname):
+        for fname in fnames:
+            annot_path = os.path.join(val_annot_dir,
+                                      os.path.splitext(fname)[0] + '.png')
+            annot = imread(annot_path)
+            annot = np.array(annot)
+            yield [fname, annot]
+
+    print('Validation duration', time.time() - start)
+    return multi_class_metrics(get_val_annots, get_seg, classes_rgb)
+
 
 def save_if_better(model_dir, cur_model, prev_model_path,
                    cur_f1, prev_f1):
@@ -156,9 +178,9 @@ def ensemble_segment(model_paths, image, bs, in_w, out_w,
     predicted = predicted.astype(int)
     return predicted
 
-def unet_segment(cnn, image, bs, in_w, out_w, threshold=0.5):
+def segment(cnn, image, bs, in_w, out_w, classes):
     """
-    Threshold set to None means probabilities returned without thresholding.
+    Return the most likely class for each pixel. 
     """
     assert image.shape[0] > in_w, str(image.shape[0])
     assert image.shape[1] > in_w, str(image.shape[1])
@@ -186,15 +208,8 @@ def unet_segment(cnn, image, bs, in_w, out_w, threshold=0.5):
     output_tiles = []
     for gpu_tiles in batches:
         outputs = cnn(gpu_tiles)
-        softmaxed = softmax(outputs, 1)
-        foreground_probs = softmaxed[:, 1, :]  # just the foreground probability.
-        if threshold is not None:
-            predicted = foreground_probs > threshold
-            predicted = predicted.view(-1).int()
-        else:
-            predicted = foreground_probs
-
-        pred_np = predicted.data.cpu().numpy()
+        _, pred_classes = torch.max(outputs, 1)
+        pred_np = pred_classes.data.cpu().numpy()
         out_tiles = pred_np.reshape((len(gpu_tiles), out_w, out_w))
         for out_tile in out_tiles:
             output_tiles.append(out_tile)
@@ -204,4 +219,7 @@ def unet_segment(cnn, image, bs, in_w, out_w, threshold=0.5):
 
     reconstructed = im_utils.reconstruct_from_tiles(output_tiles, coords,
                                                     image.shape[:-1])
-    return reconstructed
+    class_preds = np.array(([classes] + list(reconstructed.shape)))
+    for i in range(len(classes)):
+        class_preds[i] = (reconstructed == 1)
+    return class_preds
