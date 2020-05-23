@@ -36,3 +36,34 @@ def test_get_class_map():
     assert np.sum(class_map) == 2
     assert class_map[10, 10] == 1
     assert class_map[10, 15] == 1
+
+
+def test_seg_to_rgba():
+    """
+    The output of the segment method is a channel for each class
+    e.g an array of shape [2, 600, 900] 
+    for 2 classes predicted in an image of size [600, 900]
+
+    This should be displayed to the user
+    as an image with each pixel labelled as the most likely class
+
+    the class should be shown using the user defined RGB value.
+    """
+    seg = np.zeros((5, 6, 9))
+    seg[1, 1, 1] = 1
+    seg[4, 5, 5] = 1
+    class_preds = np.argmax(seg, 0)
+    classes_rgb = [
+        [0, 255, 0, 0], # background
+        [244, 0, 0, 255], # one of the foreground classes
+        [255, 110, 0, 255], # one of the foreground classes
+        [255, 130, 0, 255], # one of the foreground classes
+        [255, 150, 0, 255], # one of the foreground classes
+    ]
+    rgba_image = im_utils.seg_to_rgb(seg, classes_rgb)
+    assert rgba_image.shape == (6, 9, 4)
+    assert np.array_equal(rgba_image[0, 0], classes_rgb[0])
+    assert np.array_equal(rgba_image[1, 1], classes_rgb[1])
+    assert np.array_equal(rgba_image[5, 5], classes_rgb[4])
+    # all others are 0 (backgroun) but lets just check 1 to make sure
+    assert np.array_equal(rgba_image[2, 2], classes_rgb[0])

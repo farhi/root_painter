@@ -192,22 +192,23 @@ def get_coords(image, in_tile_shape, out_tile_shape):
     return tile_coords
 
 
-def seg_to_rgb(seg, classes_rgb):
+def seg_to_rgb(seg, classes_rgba):
     # input class preds are 0-1 and are the output from
     # the CNN before thresholding etc
-    raise Exception("WIP implementation")
     # rgb image
-    _, pred_classes_idx = torch.max(class_preds, 1)
-    rgb_output = np.array(list(class_preds.shape[:2]) + [4])
-
+    class_preds = np.argmax(seg, 0)
+    assert class_preds.shape == (seg.shape[1:])
+    rgba_output = np.zeros((list(class_preds.shape[:2]) + [4]))
     # take the class predictions.
     # get the maximum.
     # assign this to be RGB
-
     # channel for each class
-    for i, c in enumerate(classes_rgb):
-        rgb_output[class_preds[i]] = c
-    return class_preds, rgb_output
+    for i, c in enumerate(classes_rgba):
+        class_map = class_preds == i
+        rgba_output[class_map] = c
+
+    
+    return rgba_output
 
 
 def save_then_move(out_path, seg_alpha):
