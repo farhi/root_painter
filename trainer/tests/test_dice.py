@@ -17,14 +17,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import numpy as np
 import model_utils
-from model_utils import multi_class_metrics
+from model_utils import class_metrics
 
 
 def test_two_class_dice_perfect_score():
     """
     Test that an annotation and prediction
     that match perfectly will give a dice score of 1.0
-    This is the multi_class_metrics function
+    This is the class_metrics function
     but using a function with a single class.
     """
     image = np.zeros((100, 100))
@@ -47,7 +47,7 @@ def test_two_class_dice_perfect_score():
     def get_val_annots():
         return [[val_fname, annot]]
     
-    all_metrics = multi_class_metrics(get_val_annots, get_seg, classes_rgb)
+    all_metrics = class_metrics(get_val_annots, get_seg, classes_rgb)
 
     assert len(all_metrics) == 2
     assert all_metrics[0]['dice'] == 1.0
@@ -81,7 +81,7 @@ def test_two_class_dice_half_score():
     def get_val_annots():
         return [[val_fname, annot]]
 
-    all_metrics = multi_class_metrics(get_val_annots, get_seg, classes_rgb)
+    all_metrics = class_metrics(get_val_annots, get_seg, classes_rgb)
     assert len(all_metrics) == 2
     assert all_metrics[0]['dice'] == 0.5
     assert all_metrics[1]['dice'] == 0.5
@@ -120,7 +120,7 @@ def test_two_class_dice_half_score_with_undefined():
     def get_val_annots():
         return [[val_fname, annot]]
 
-    all_metrics = multi_class_metrics(get_val_annots, get_seg, classes_rgb)
+    all_metrics = class_metrics(get_val_annots, get_seg, classes_rgb)
     assert len(all_metrics) == 2
     assert all_metrics[0]['dice'] == 0.5
     assert all_metrics[1]['dice'] == 0.5
@@ -131,7 +131,7 @@ def test_four_class_dice_half_score():
     """
     Test that an annotation and prediction
     that match perfectly will give a dice score of 1.0
-    This is the multi_class_metrics function
+    This is the class_metrics function
     but using a function with a single class.
     
     Example data to get 0.5 dice for 4 classes 
@@ -178,7 +178,7 @@ def test_four_class_dice_half_score():
     def get_val_annots():
         return [[val_fname, annot]]
     
-    all_metrics = multi_class_metrics(get_val_annots, get_seg, classes_rgb)
+    all_metrics = class_metrics(get_val_annots, get_seg, classes_rgb)
 
     assert len(all_metrics) == 4
     assert all_metrics[0]['dice'] == 0.5

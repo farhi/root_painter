@@ -67,7 +67,7 @@ def get_prev_model(model_dir):
     return prev_model, prev_path
 
 
-def multi_class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
+def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
     """
     What information does this function need?
 
@@ -132,7 +132,7 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs):
             yield [fname, annot]
 
     print('Validation duration', time.time() - start)
-    return multi_class_metrics(get_val_annots, get_seg, classes_rgb)
+    return class_metrics(get_val_annots, get_seg, classes_rgb)
 
 
 def save_if_better(model_dir, cur_model, prev_model_path,
@@ -151,6 +151,7 @@ def save_if_better(model_dir, cur_model, prev_model_path,
         return True
     return False
 
+
 def model_file_segment(model_paths, image, bs, in_w, out_w, classes):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
@@ -160,6 +161,7 @@ def model_file_segment(model_paths, image, bs, in_w, out_w, classes):
     cnn.half()
     preds = segment(cnn, image, bs, in_w, out_w, classes)
     return predicted
+
 
 def segment(cnn, image, bs, in_w, out_w, classes_rgb):
     """
@@ -205,6 +207,7 @@ def segment(cnn, image, bs, in_w, out_w, classes_rgb):
                                                     image.shape[:-1])
     # rgb image
     rgb_output = np.array(list(reconstructed.shape) + [4])
+
     # channel for each class
     class_preds = np.array(([classes_rgb] + list(reconstructed.shape)))
     for i, c in enumerate(classes_rgb):
