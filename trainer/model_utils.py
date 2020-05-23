@@ -163,54 +163,56 @@ def model_file_segment(model_paths, image, bs, in_w, out_w, classes):
     return predicted
 
 
-def segment(cnn, image, bs, in_w, out_w, classes_rgb):
-    """
-    Return image for each class.
-    And return RGB representation using classes_rgb
-    """
-    assert image.shape[0] > in_w, str(image.shape[0])
-    assert image.shape[1] > in_w, str(image.shape[1])
+def segment(cnn, image, bs, in_w, out_w):
+    # Return prediction for each pixel in the image
+    # The cnn will give a the output as channels where
+    # each channel corresponds to a specific class 'probability'
+    assert image.shape[0] >= in_w, str(image.shape[0])
+    assert image.shape[1] >= in_w, str(image.shape[1])
 
     tiles, coords = im_utils.get_tiles(image,
                                        in_tile_shape=(in_w, in_w, 3),
                                        out_tile_shape=(out_w, out_w))
     tile_idx = 0
     batches = []
+    
+    # segmentation for the full image
+    # assign once we get number of classes from the cnn output shape.
+    seg = None
+
     while tile_idx < len(tiles):
         tiles_to_process = []
+        coords_to_process = []
         for _ in range(bs):
             if tile_idx < len(tiles):
                 tile = tiles[tile_idx]
+                coord = coords[tile_idx]
                 tile = img_as_float32(tile)
+                print('tile1', tile)
                 tile = im_utils.normalize_tile(tile)
+                print('tile2', tile)
                 tile = np.moveaxis(tile, -1, 0)
                 tile_idx += 1
                 tiles_to_process.append(tile)
+                coords_to_process.append(coord)
+
         tiles_for_gpu = torch.from_numpy(np.array(tiles_to_process))
         tiles_for_gpu.cuda()
         tiles_for_gpu = tiles_for_gpu.half()
-        batches.append(tiles_for_gpu)
+        tiles_predictions = cnn(tiles_for_gpu)
+        pred_np = tiles_predictions.data.cpu().numpy()
 
-    output_tiles = []
-    for gpu_tiles in batches:
-        outputs = cnn(gpu_tiles)
-        _, pred_classes = torch.max(outputs, 1)
-        pred_np = pred_classes.data.cpu().numpy()
-        out_tiles = pred_np.reshape((len(gpu_tiles), out_w, out_w))
-        for out_tile in out_tiles:
-            output_tiles.append(out_tile)
+        num_classes = pred_np.shape[1] # how many output classes
 
-    assert len(output_tiles) == len(coords), (
-        f'{len(output_tiles)} {len(coords)}')
+        if seg == None:
+            seg_shape = [num_classes] + list(image.shape[:2])
+            seg = np.zeros(seg_shape)
 
-    reconstructed = im_utils.reconstruct_from_tiles(output_tiles, coords,
-                                                    image.shape[:-1])
-    # rgb image
-    rgb_output = np.array(list(reconstructed.shape) + [4])
-
-    # channel for each class
-    class_preds = np.array(([classes_rgb] + list(reconstructed.shape)))
-    for i, c in enumerate(classes_rgb):
-        class_preds[i] = (reconstructed == i)
-        rgb_output[class_preds[i]] = c
-    return class_preds, rgb_output
+        out_tiles = pred_np.reshape((len(tiles_for_gpu), num_classes, out_w, out_w))
+        
+        # add the predictions from the gpu to the output segmentation
+        # use their correspond coordinates
+        for tile, (x, y) in zip(out_tiles, coords_to_process):
+            # tile has channels first so move to channels last.
+            seg[:, y:y+tile.shape[1], x:x+tile.shape[2]] = tile
+    return seg

@@ -19,6 +19,7 @@ import numpy as np
 import model_utils
 from unet import UNetGNRes
 from model_utils import segment
+import im_utils
 import torch
 
 
@@ -42,4 +43,27 @@ def test_CNN_segment_classes():
     assert output.shape[1] == num_classes
 
 
+def test_segment_large_2D_image(monkeypatch):
+    # segmentation method reconstructs the output properly
+    
+    def cnn(tile):
+        # return input with 3 channels is equivalent of 3 classes.
+        return tile
 
+    def mock_normalize_tile(tile):
+        # skip this for now to check that input
+        # is reconsructed properly
+        return tile
+
+    monkeypatch.setattr(im_utils, "normalize_tile", mock_normalize_tile)
+
+    in_w = 1000
+    out_w = in_w
+    channels = 9
+    bs = 6
+    test_input = np.random.rand(in_w, in_w, channels)
+    seg = segment(cnn, test_input, bs, in_w, out_w)
+    assert seg.shape == (channels, in_w, in_w) # 3 class with same size as input
+    seg = np.moveaxis(seg, 0, -1) # return back to original image shape
+    # its not exactly the same due to converion to pytorch 16bit etc
+    assert np.allclose(seg, test_input, atol=0.01)

@@ -193,20 +193,23 @@ def get_tiles(image, in_tile_shape, out_tile_shape):
     return tiles, tile_coords
 
 
-def reconstruct_from_tiles(tiles, coords, output_shape):
-    image = np.zeros(output_shape)
-    for tile, (x, y) in zip(tiles, coords):
-        image[y:y+tile.shape[0], x:x+tile.shape[1]] = tile
-    return image
+def class_predictions_to_rgb(class_preds, classes_rgb):
+    # input class preds are 0-1 and are the output from
+    # the CNN before thresholding etc
+    raise Exception("WIP implementation")
+    # rgb image
+    _, pred_classes_idx = torch.max(class_preds, 1)
+    rgb_output = np.array(list(class_preds.shape[:2]) + [4])
 
+    # take the class predictions.
+    # get the maximum.
+    # assign this to be RGB
 
-def tiles_from_coords(image, coords, tile_shape):
-    tiles = []
-    for x, y in coords:
-        tile = image[y:y+tile_shape[0],
-                     x:x+tile_shape[1]]
-        tiles.append(tile)
-    return tiles
+    # channel for each class
+    for i, c in enumerate(classes_rgb):
+        rgb_output[class_preds[i]] = c
+    return class_preds, rgb_output
+
 
 def save_then_move(out_path, seg_alpha):
     """ need to save in a temp folder first and
