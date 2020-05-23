@@ -57,10 +57,10 @@ def test_segment_large_2D_image(monkeypatch):
 
     monkeypatch.setattr(im_utils, "normalize_tile", mock_normalize_tile)
 
-    in_w = 1000
+    in_w = 600
     out_w = in_w
-    channels = 9
-    bs = 6
+    channels = 4
+    bs = 2
     test_input = np.random.rand(in_w, in_w, channels)
     seg = segment(cnn, test_input, bs, in_w, out_w)
     assert seg.shape == (channels, in_w, in_w) # 3 class with same size as input
