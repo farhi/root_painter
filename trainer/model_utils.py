@@ -169,30 +169,29 @@ def segment(cnn, image, bs, in_w, out_w):
     # each channel corresponds to a specific class 'probability'
     assert image.shape[0] >= in_w, str(image.shape[0])
     assert image.shape[1] >= in_w, str(image.shape[1])
-
-    tiles, coords = im_utils.get_tiles(image,
-                                       in_tile_shape=(in_w, in_w, 3),
-                                       out_tile_shape=(out_w, out_w))
-    tile_idx = 0
+    coords = im_utils.get_coords(image,
+                                 in_tile_shape=(in_w, in_w, 3),
+                                 out_tile_shape=(out_w, out_w))
+    coord_idx = 0
     batches = []
     
     # segmentation for the full image
     # assign once we get number of classes from the cnn output shape.
     seg = None
 
-    while tile_idx < len(tiles):
+    while coord_idx < len(coords):
         tiles_to_process = []
         coords_to_process = []
         for _ in range(bs):
-            if tile_idx < len(tiles):
-                tile = tiles[tile_idx]
-                coord = coords[tile_idx]
+            if coord_idx < len(coords):
+                coord = coords[coord_idx]
+                x, y = coord
+                tile = image[y:y+in_w,
+                             x:x+in_w]
                 tile = img_as_float32(tile)
-                print('tile1', tile)
                 tile = im_utils.normalize_tile(tile)
-                print('tile2', tile)
                 tile = np.moveaxis(tile, -1, 0)
-                tile_idx += 1
+                coord_idx += 1
                 tiles_to_process.append(tile)
                 coords_to_process.append(coord)
 
@@ -201,7 +200,6 @@ def segment(cnn, image, bs, in_w, out_w):
         tiles_for_gpu = tiles_for_gpu.half()
         tiles_predictions = cnn(tiles_for_gpu)
         pred_np = tiles_predictions.data.cpu().numpy()
-
         num_classes = pred_np.shape[1] # how many output classes
 
         if seg == None:

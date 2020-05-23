@@ -165,7 +165,7 @@ def add_gaussian_noise(image, sigma):
     gaussian_noise = gaussian_noise.reshape(image.shape)
     return image + gaussian_noise
 
-def get_tiles(image, in_tile_shape, out_tile_shape):
+def get_coords(image, in_tile_shape, out_tile_shape):
     width_diff = in_tile_shape[1] - out_tile_shape[1]
     pad_width = width_diff // 2
     padded_photo = pad(image, pad_width)
@@ -189,11 +189,10 @@ def get_tiles(image, in_tile_shape, out_tile_shape):
 
     # because its a rectangle get all combinations of x and y
     tile_coords = [(x, y) for x in x_coords for y in y_coords]
-    tiles = tiles_from_coords(padded_photo, tile_coords, in_tile_shape)
-    return tiles, tile_coords
+    return tile_coords
 
 
-def class_predictions_to_rgb(class_preds, classes_rgb):
+def seg_to_rgb(seg, classes_rgb):
     # input class preds are 0-1 and are the output from
     # the CNN before thresholding etc
     raise Exception("WIP implementation")
