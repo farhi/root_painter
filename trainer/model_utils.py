@@ -152,13 +152,13 @@ def save_if_better(model_dir, cur_model, prev_model_path,
     return False
 
 
-def model_file_segment(model_paths, image, bs, in_w, out_w, classes):
+def model_file_segment(model_paths, image, bs, in_w, out_w, classes_rgba):
     """ Average predictions from each model specified in model_paths """
     # then add predictions from the previous models to form an ensemble
     cnn = load_model(model_paths[0])
     cnn.half()
-    preds = segment(cnn, image, bs, in_w, out_w, classes)
-    return predicted
+    preds = segment(cnn, image, bs, in_w, out_w)
+    return im_utils.seg_to_rgba(preds, classes_rgba)
 
 
 def segment(cnn, image, bs, in_w, out_w):
