@@ -165,7 +165,11 @@ def segment(cnn, image, bs, in_w, out_w):
     # each channel corresponds to a specific class 'probability'
     assert image.shape[0] >= in_w, str(image.shape[0])
     assert image.shape[1] >= in_w, str(image.shape[1])
-    coords = im_utils.get_coords(image,
+
+    width_diff = in_w - out_w
+    pad_width = width_diff // 2
+    padded_im = im_utils.pad(image, pad_width)
+    coords = im_utils.get_coords(padded_im, image,
                                  in_tile_shape=(in_w, in_w, 3),
                                  out_tile_shape=(out_w, out_w))
     coord_idx = 0
@@ -182,16 +186,21 @@ def segment(cnn, image, bs, in_w, out_w):
             if coord_idx < len(coords):
                 coord = coords[coord_idx]
                 x, y = coord
-                tile = image[y:y+in_w,
-                             x:x+in_w]
+                tile = padded_im[y:y+in_w,
+                                 x:x+in_w]
+                assert tile.shape[0] == in_w
+                assert tile.shape[1] == in_w
                 tile = img_as_float32(tile)
                 tile = im_utils.normalize_tile(tile)
                 tile = np.moveaxis(tile, -1, 0)
                 coord_idx += 1
                 tiles_to_process.append(tile)
+        
                 coords_to_process.append(coord)
 
-        tiles_for_gpu = torch.from_numpy(np.array(tiles_to_process))
+        tiles_to_process = np.array(tiles_to_process)
+        print('tiles_to_process.shape', tiles_to_process.shape)
+        tiles_for_gpu = torch.from_numpy(tiles_to_process)
         tiles_for_gpu.cuda()
         tiles_for_gpu = tiles_for_gpu.half()
         tiles_predictions = cnn(tiles_for_gpu)
