@@ -126,7 +126,7 @@ def annot_to_target_and_mask(annot, target_classes):
                      (g_channel == class_g) *
                      (b_channel == class_b))
         target[class_map] = i
-    return target
+    return target, mask
 
 
 def pad(image, width: int, mode='reflect', constant_values=0):
