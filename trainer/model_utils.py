@@ -48,12 +48,12 @@ def load_model(model_path):
     model.cuda()
     return model
 
-def create_first_model_with_random_weights(model_dir):
+def create_first_model_with_random_weights(model_dir, num_classes):
     # used when no model was specified on project creation.
     model_num = 1
     model_name = str(model_num).zfill(6)
     model_name += '_' + str(int(round(time.time()))) + '.pkl'
-    model = UNetGNRes()
+    model = UNetGNRes(out_channels=num_classes)
     model = torch.nn.DataParallel(model)
     model_path = os.path.join(model_dir, model_name)
     torch.save(model.state_dict(), model_path)
