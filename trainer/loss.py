@@ -37,9 +37,10 @@ def combined_loss(predictions, labels):
     # if they are bigger than 1 you get a strange gpu error
     # without a stack track so you will have no idea why.
     assert torch.max(labels) <= 1
-    if torch.sum(labels) > 0:
-        return (dice_loss(predictions, labels) +
-                (0.3 * cross_entropy(predictions, labels)))
+    #if torch.sum(labels) > 0:
+    #    return (dice_loss(predictions, labels) +
+    #            (0.3 * cross_entropy(predictions, labels)))
     # When no roots use only cross entropy
     # as dice is undefined.
+    #return 0.3 * cross_entropy(predictions, labels)
     return 0.3 * cross_entropy(predictions, labels)
