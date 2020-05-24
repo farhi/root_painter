@@ -111,8 +111,9 @@ def test_2D_segment_instruction():
         "seg_dir": seg_dir,
         "file_names": ['example_image.jpeg'],
         "model_dir": model_dir,
-        # bg, red, blue
-        "classes_rgba": [[0,180,0,0], [255,0,0,255], [0, 0, 255, 255]]
+        "classes": [('bg', [0,180,0,0], 'w'),
+                    ('red', [255,0,0,255], '1'),
+                    ('blue', [0, 0, 255, 255], '2')]
     }
     # save the instruction (json file) to the instructions folder. 
     hash_str = '_' + str(hash(json.dumps(content)))
