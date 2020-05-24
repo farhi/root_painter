@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import time
 import glob
+import math
 import numpy as np
 import torch
 from torch.nn.functional import softmax
@@ -37,8 +38,9 @@ def get_latest_model_paths(model_dir, k):
     fpaths = [os.path.join(model_dir, f) for f in fnames]
     return fpaths
 
-def load_model(model_path):
-    model = UNetGNRes()
+
+def load_model(model_path, num_classes):
+    model = UNetGNRes(out_channels=num_classes)
     try:
         model.load_state_dict(torch.load(model_path))
         model = torch.nn.DataParallel(model)
@@ -61,9 +63,9 @@ def create_first_model_with_random_weights(model_dir, num_classes):
     return model
 
 
-def get_prev_model(model_dir):
+def get_prev_model(model_dir, num_classes):
     prev_path = get_latest_model_paths(model_dir, k=1)[0]
-    prev_model = load_model(prev_path)
+    prev_model = load_model(prev_path, num_classes)
     return prev_model, prev_path
 
 
@@ -107,12 +109,14 @@ def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
     return class_metrics
 
 
-def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs):
+def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
 
     start = time.time()
     fnames = ls(val_annot_dir)
     fnames = [a for a in fnames if im_utils.is_photo(a)]
     cnn.half()
+    
+    classes_rgb = [c[1][:3] for c in classes]
     
     def get_seg(fname):
         image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
@@ -121,7 +125,7 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs):
         predicted = segment(cnn, image, bs, in_w, out_w)
         return predicted
 
-    def get_val_annots(fname):
+    def get_val_annots():
         for fname in fnames:
             annot_path = os.path.join(val_annot_dir,
                                       os.path.splitext(fname)[0] + '.png')
@@ -135,9 +139,17 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs):
 
 def save_if_better(model_dir, cur_model, prev_model_path,
                    cur_f1, prev_f1):
+
+    # convert the nans as they don't work in comparison
+    if math.isnan(cur_f1):
+        cur_f1 = 0
+    if math.isnan(prev_f1):
+        prev_f1 = 0
+
     print('prev f1', str(round(prev_f1, 5)).ljust(7, '0'),
           'cur f1', str(round(cur_f1, 5)).ljust(7, '0'))
-    if cur_f1 > prev_f1:
+    print('cur better', cur_f1 > prev_f1)
+    if True or cur_f1 > prev_f1:
         prev_model_fname = os.path.basename(prev_model_path)
         prev_model_num = int(prev_model_fname.split('_')[0])
         model_num = prev_model_num + 1
@@ -153,7 +165,7 @@ def save_if_better(model_dir, cur_model, prev_model_path,
 def model_file_segment(model_paths, image, bs, in_w, out_w, classes_rgba):
     """ Average predictions from each model specified in model_paths """
     # then add predictions from the previous models to form an ensemble
-    cnn = load_model(model_paths[0])
+    cnn = load_model(model_paths[0], len(classes_rgba))
     cnn.half()
     preds = segment(cnn, image, bs, in_w, out_w)
     return im_utils.seg_to_rgba(preds, classes_rgba)

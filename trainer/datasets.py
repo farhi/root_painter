@@ -88,16 +88,18 @@ class UNetTransformer():
 
 class TrainDataset(Dataset):
     def __init__(self, train_annot_dir, dataset_dir, in_w, out_w,
-                 target_classes):
+                 classes):
         """
         in_w and out_w are the tile size in pixels
 
         target_classes is a list of the possible output classes
             the position in the list is the index (target) to be predicted by
             the network in the output.
-            The value of the elmenent is the rgb (int, int, int) used to draw this 
+            The value of the elmenent is the rgba (int, int, int) used to draw this 
             class in the annotation.
         """
+
+        target_classes = [c[1][:3] for c in classes]
         self.in_w = in_w
         self.out_w = out_w
         self.train_annot_dir = train_annot_dir
@@ -157,7 +159,7 @@ class TrainDataset(Dataset):
         # Annotion is cropped post augmentation to ensure
         # elastic grid doesn't remove the edges.
         annot_tile = annot_tile[tile_pad:-tile_pad, tile_pad:-tile_pad]
-        target, mask = annot_to_target_and_mask(annot_tile)
+        target, mask = annot_to_target_and_mask(annot_tile, self.target_classes)
 
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)

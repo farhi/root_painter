@@ -63,7 +63,7 @@ class Trainer():
         total_mem = 0
         for i in range(torch.cuda.device_count()):
             total_mem += torch.cuda.get_device_properties(i).total_memory
-        self.bs = total_mem // mem_per_item
+        self.bs = 8 # total_mem // mem_per_item
         print('Batch size', self.bs)
         self.optimizer = None
         # used to check for updates
@@ -98,8 +98,8 @@ class Trainer():
             if k == 'file_names':
                 # names dont need a path appending
                 new_config[k] = v
-            elif k == 'classes_rgba':
-                # classes_rgba should not be altered
+            elif k == 'classes':
+                # classes should not be altered
                 new_config[k] = v
             elif isinstance(v, list):
                 # if its a list fix each string in the list.
@@ -157,14 +157,16 @@ class Trainer():
             self.epochs_without_progress = 0
             self.msg_dir = self.train_config['message_dir']
             model_dir = self.train_config['model_dir']
+            classes = self.train_config['classes']
             self.train_set = TrainDataset(self.train_config['train_annot_dir'],
                                           self.train_config['dataset_dir'],
-                                          self.in_w, self.out_w)
+                                          self.in_w, self.out_w,
+                                          classes)
             model_paths = model_utils.get_latest_model_paths(model_dir, 1)
             if model_paths:
-                self.model = model_utils.load_model(model_paths[0])
+                self.model = model_utils.load_model(model_paths[0], num_classes=len(classes))
             else:
-                self.model = create_first_model_with_random_weights(model_dir)
+                self.model = create_first_model_with_random_weights(model_dir, num_classes=len(classes))
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01,
                                              momentum=0.99, nesterov=True)
             self.model.train()
@@ -212,25 +214,26 @@ class Trainer():
         fns = 0
         defined_total = 0
         loss_sum = 0
-        for step, (photo_tiles,
+        for step, (im_tiles,
                    target_tiles,
                    defined_tiles) in enumerate(train_loader):
 
             self.check_for_instructions()
-            photo_tiles = photo_tiles.cuda()
+            im_tiles = im_tiles.cuda()
             target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
             self.optimizer.zero_grad()
-            outputs = self.model(photo_tiles)
+            outputs = self.model(im_tiles)
             softmaxed = softmax(outputs, 1)
 
             # remove any of the predictions for which we don't have ground truth
             # Set outputs to 0 where annotation undefined so that
             # The network can predict whatever it wants without any penalty.
-            outputs[:, 0] *= defined_tiles
-            outputs[:, 1] *= defined_tiles
-            outputs[:, 2] *= defined_tiles
-            loss = criterion(outputs, foreground_tiles)
+            
+            for i in range(len(outputs)):
+                outputs[i, :] *= defined_tiles[i]
+
+            loss = criterion(outputs, target_tiles)
             loss.backward()
             self.optimizer.step()
             loss_sum += loss.item() # float
@@ -247,19 +250,6 @@ class Trainer():
         self.validation()
         print('epoch validation duration', time.time() - before_val_time)
 
-    def log_metrics(self, name, metrics):
-        fname = datetime.today().strftime('%Y-%m-%d')
-        fname += f'_{name}.csv'
-        fpath = os.path.join(self.train_config['log_dir'], fname)
-        if not os.path.isfile(fpath):
-            # write headers if file didn't exist
-            print('date_time,true_positives,false_positives,true_negatives,'
-                  'false_negatives,precision,recall,f1,defined,duration',
-                  file=open(fpath, 'w+'))
-        with open(fpath, 'a+') as log_file:
-            log_file.write(get_metric_csv_row(metrics))
-            log_file.flush()
-
     def validation(self):
         """ Get validation set metrics for current model and previous model.
              log those metrics and update the model if the
@@ -268,17 +258,24 @@ class Trainer():
              beat the previous model for {max_epochs}
         """
         model_dir = self.train_config['model_dir']
+        classes = self.train_config['classes']
         get_val_metrics = partial(model_utils.get_val_metrics,
                                   val_annot_dir=self.train_config['val_annot_dir'],
                                   dataset_dir=self.train_config['dataset_dir'],
-                                  in_w=self.in_w, out_w=self.out_w, bs=self.bs)
-        prev_model, prev_path = model_utils.get_prev_model(model_dir)
+                                  in_w=self.in_w, out_w=self.out_w, bs=self.bs,
+                                  classes=classes)
+
+        prev_model, prev_path = model_utils.get_prev_model(model_dir,
+                                                           len(classes))
         cur_metrics = get_val_metrics(copy.deepcopy(self.model))
         prev_metrics = get_val_metrics(prev_model)
-        self.log_metrics('cur_val', cur_metrics)
-        self.log_metrics('prev_val', prev_metrics)
+        print('cur metric len', len(cur_metrics))
+        print('prev metric len', len(prev_metrics))
+
+        cur_f1 = np.mean([m['dice'] for m in cur_metrics])
+        prev_f1 = np.mean([m['dice'] for m in prev_metrics])
         was_saved = save_if_better(model_dir, self.model, prev_path,
-                                   cur_metrics['f1'], prev_metrics['f1'])
+                                   cur_f1, prev_f1)
         if was_saved:
             self.epochs_without_progress = 0
         else:
@@ -329,6 +326,7 @@ class Trainer():
         """
         in_dir = segment_config['dataset_dir']
         seg_dir = segment_config['seg_dir']
+        classes_rgba = [c[1] for c in segment_config['classes']]
         if "file_names" in segment_config:
             fnames = segment_config['file_names']
         else:
@@ -344,10 +342,9 @@ class Trainer():
             # if latest is not found then create a model with random weights
             # and use that.
             if not model_paths:
-                create_first_model_with_random_weights(model_dir)
+                create_first_model_with_random_weights(model_dir, len(classes_rgba))
                 model_paths = model_utils.get_latest_model_paths(model_dir, 1)
         
-        classes_rgba = segment_config['classes_rgba']
         start = time.time()
         for fname in fnames:
             self.segment_file(in_dir, seg_dir, fname,
@@ -369,18 +366,18 @@ class Trainer():
             print('Cannot segment as missing file', fpath)
         else:
             try:
-                photo = load_image(fpath)
+                im = load_image(fpath)
             except Exception as e:
                 # Could be temporary issues reading the image.
                 # its ok just skip it.
                 print('Exception loading', fpath, e)
                 return
             # if input is smaller than this, behaviour is unpredictable.
-            if photo.shape[0] < self.in_w or photo.shape[1] < self.in_w:
+            if im.shape[0] < self.in_w or im.shape[1] < self.in_w:
                 raise Exception(f"image {fname} too small to segment. Width "
                                 f" and height must be at least {self.in_w}")
             seg_start = time.time()
-            segmented_rgba = model_file_segment(model_paths, photo, self.bs,
+            segmented_rgba = model_file_segment(model_paths, im, self.bs,
                                                 self.in_w, self.out_w, classes_rgba)
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
