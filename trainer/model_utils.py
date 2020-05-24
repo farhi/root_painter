@@ -69,10 +69,8 @@ def get_prev_model(model_dir):
 
 def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
     """
-    What information does this function need?
-
-    We need to be able to make predictions using the CNN for a full image.
-    I.e not just part of the image.
+    Segment the validation images and
+    return metrics for each of the classes.
     """
     class_metrics = [{'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0}]
     class_metrics *= len(classes_rgb)
