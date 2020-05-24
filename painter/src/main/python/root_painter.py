@@ -139,7 +139,7 @@ class RootPainter(QtWidgets.QMainWindow):
             self.message_dir = self.proj_location / 'messages'
 
 
-            self.brush_data = settings['brushes']
+            self.classes = settings['classes']
 
             # If there are any annotations which have already been saved
             # then go through the annotations in the order specified
@@ -289,7 +289,8 @@ class RootPainter(QtWidgets.QMainWindow):
             "seg_dir": self.seg_dir,
             "file_names": image_fnames,
             "message_dir": self.message_dir,
-            "model_dir": self.model_dir
+            "model_dir": self.model_dir,
+            "classes": self.classes
         }
         self.send_instruction('segment', content)
 
@@ -354,7 +355,8 @@ class RootPainter(QtWidgets.QMainWindow):
 
         def show_segment_folder():
             self.segment_folder_widget = SegmentFolderWidget(self.sync_dir,
-                                                             self.instruction_dir)
+                                                             self.instruction_dir,
+                                                             self.classes)
             self.segment_folder_widget.show()
         self.segment_folder_btn.triggered.connect(show_segment_folder)
         self.network_menu.addAction(self.segment_folder_btn)
@@ -632,7 +634,8 @@ class RootPainter(QtWidgets.QMainWindow):
 
         def show_segment_folder():
             self.segment_folder_widget = SegmentFolderWidget(self.sync_dir,
-                                                             self.instruction_dir)
+                                                             self.instruction_dir,
+                                                             self.classes)
             self.segment_folder_widget.show()
         segment_folder_btn.triggered.connect(show_segment_folder)
         network_menu.addAction(segment_folder_btn)
@@ -658,7 +661,7 @@ class RootPainter(QtWidgets.QMainWindow):
     def add_brushes(self):
 
         self.brush_menu = self.menu_bar.addMenu("Brushes")
-        for name, rgba, shortcut in self.brush_data:
+        for name, rgba, shortcut in self.classes:
             self.add_brush(name, rgba, shortcut)
 
     def add_measurements_menu(self, menu_bar):
@@ -710,7 +713,8 @@ class RootPainter(QtWidgets.QMainWindow):
             "val_annot_dir": self.val_annot_dir,
             "seg_dir": self.seg_dir,
             "log_dir": self.log_dir,
-            "message_dir": self.message_dir
+            "message_dir": self.message_dir,
+            "classes": self.classes
         }
         self.send_instruction('start_training', content)
 

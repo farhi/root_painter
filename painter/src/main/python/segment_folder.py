@@ -63,7 +63,7 @@ class SegmentFolderWidget(QtWidgets.QWidget):
 
     submit = QtCore.pyqtSignal()
 
-    def __init__(self, sync_dir, instruction_dir):
+    def __init__(self, sync_dir, instruction_dir, classes_rgba):
         super().__init__()
 
         self.input_dir = None
@@ -71,6 +71,7 @@ class SegmentFolderWidget(QtWidgets.QWidget):
         self.selected_models = []
         self.instruction_dir = instruction_dir
         self.sync_dir = sync_dir
+        self.classes_rgba = classes_rgba
         self.initUI()
 
     def segment_folder(self):
@@ -84,7 +85,8 @@ class SegmentFolderWidget(QtWidgets.QWidget):
             "model_paths": selected_models,
             "dataset_dir": input_dir,
             "seg_dir": output_dir,
-            "file_names": all_fnames
+            "file_names": all_fnames,
+            "classes_rgba": self.classes_rgba
         }
         send_instruction('segment', content, self.instruction_dir, self.sync_dir)
         self.progress_widget = SegmentProgressWidget()

@@ -244,7 +244,7 @@ class CreateProjectWidget(QtWidgets.QWidget):
             'original_model_file': original_model_file,
             'location': str(PurePosixPath(project_location)),
             'file_names': all_fnames,
-            'brushes': self.palette_edit_widget.get_brush_data()
+            'classes': self.palette_edit_widget.get_brush_data()
         }
         with open(proj_file_path, 'w') as json_file:
             json.dump(project_info, json_file, indent=4)
