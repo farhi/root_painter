@@ -60,7 +60,7 @@ def test_seg_to_rgba():
         [255, 130, 0, 255], # one of the foreground classes
         [255, 150, 0, 255], # one of the foreground classes
     ]
-    rgba_image = im_utils.seg_to_rgb(seg, classes_rgb)
+    rgba_image = im_utils.seg_to_rgba(seg, classes_rgb)
     assert rgba_image.shape == (6, 9, 4)
     assert np.array_equal(rgba_image[0, 0], classes_rgb[0])
     assert np.array_equal(rgba_image[1, 1], classes_rgb[1])
