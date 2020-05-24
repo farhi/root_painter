@@ -165,10 +165,7 @@ def add_gaussian_noise(image, sigma):
     gaussian_noise = gaussian_noise.reshape(image.shape)
     return image + gaussian_noise
 
-def get_coords(image, in_tile_shape, out_tile_shape):
-    width_diff = in_tile_shape[1] - out_tile_shape[1]
-    pad_width = width_diff // 2
-    padded_photo = pad(image, pad_width)
+def get_coords(padded_im, image, in_tile_shape, out_tile_shape):
 
     horizontal_count = ceil(image.shape[1] / out_tile_shape[1])
     vertical_count = ceil(image.shape[0] / out_tile_shape[0])
@@ -181,8 +178,8 @@ def get_coords(image, in_tile_shape, out_tile_shape):
     # (Might go outside the image)
     # so get the tile positiion by subtracting tile size from the
     # edge of the image.
-    right_x = padded_photo.shape[1] - in_tile_shape[1]
-    bottom_y = padded_photo.shape[0] - in_tile_shape[0]
+    right_x = padded_im.shape[1] - in_tile_shape[1]
+    bottom_y = padded_im.shape[0] - in_tile_shape[0]
 
     y_coords.append(bottom_y)
     x_coords.append(right_x)
