@@ -206,8 +206,6 @@ def seg_to_rgb(seg, classes_rgba):
     for i, c in enumerate(classes_rgba):
         class_map = class_preds == i
         rgba_output[class_map] = c
-
-    
     return rgba_output
 
 
