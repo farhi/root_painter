@@ -15,12 +15,16 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import os
+import shutil
+import json
 import numpy as np
-import model_utils
-from unet import UNetGNRes
-from model_utils import segment
-import im_utils
 import torch
+from skimage.io import imread, imsave
+from unet import UNetGNRes
+from model_utils import segment, create_first_model_with_random_weights
+import im_utils
+from trainer import Trainer
 
 
 def test_CNN_segment_classes():
@@ -67,3 +71,76 @@ def test_segment_large_2D_image(monkeypatch):
     seg = np.moveaxis(seg, 0, -1) # return back to original image shape
     # its not exactly the same due to converion to pytorch 16bit etc
     assert np.allclose(seg, test_input, atol=0.01)
+
+
+
+def test_2D_segment_instruction():
+    """
+    A high level integration test for the 
+    full 2D image segmentation prcocess.
+    We don't check model accuracy here. 
+    """
+    # create a 'scrap' folder for the test in /tmp 
+    # this scrap folder will be used as the sync_directory for this test.
+    sync_dir = os.path.join('/tmp', 'test_sync_dir')
+    if os.path.isdir(sync_dir):
+        shutil.rmtree(sync_dir) 
+    os.makedirs(sync_dir)
+    
+    # create an instructions folder, models folder,  dataset folder
+    # and a segmentation folder inside the sync_directory
+    instruction_dir = os.path.join(sync_dir, 'instructions')
+    dataset_dir = os.path.join(sync_dir, 'dataset')
+    seg_dir = os.path.join(sync_dir, 'seg')
+    model_dir = os.path.join(sync_dir, 'models')
+    for d in [instruction_dir, dataset_dir, model_dir, seg_dir]:
+        os.makedirs(d)
+    
+    # create a model file (random weights is fine)
+    # and save the model to the models folder.
+    create_first_model_with_random_weights(model_dir, num_classes=3)
+
+    # create an example input image using numpy and save to the datsets folder
+    example_image = np.random.rand(1200, 600, 3)
+    im_path = os.path.join(dataset_dir, 'example_image.jpeg')
+    imsave(im_path, example_image)
+
+    # create an instruction as json.
+    content = {
+        "dataset_dir": dataset_dir,
+        "seg_dir": seg_dir,
+        "file_names": ['example_image.jpeg'],
+        "model_dir": model_dir,
+        # bg, red, blue
+        "classes_rgba": [[0,180,0,0], [255,0,0,255], [0, 0, 255, 255]]
+    }
+    # save the instruction (json file) to the instructions folder. 
+    hash_str = '_' + str(hash(json.dumps(content)))
+    fpath = os.path.join(instruction_dir, 'segment' + hash_str)
+    with open(fpath, 'w') as json_file:
+        json.dump(content, json_file, indent=4)
+ 
+    # create a trainer object and set the sync directory
+    # to be the scrap folder which has been created.
+    trainer = Trainer(sync_dir)
+
+    # tell the trainer to check for instructions
+    trainer.check_for_instructions()
+    print('checking')
+
+    # assert that the segmentation file has been created
+    seg_path = os.path.join(seg_dir, 'example_image.png')
+    assert os.path.isfile(seg_path)
+
+    # assert that it it is non-zero (random weights don't do this) 
+    seg = imread(seg_path)
+    assert np.sum(seg) > 0
+
+    # assert that it has the same shape as the input image
+    assert seg.shape == (example_image.shape[0], example_image.shape[1], 4)
+    # assert that the segment instruction has been deleted.
+    assert not os.path.isfile(fpath) 
+
+    # clean up the the scrap folder that was created in /tmp
+    shutil.rmtree(sync_dir) 
+
