@@ -16,8 +16,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from pathlib import Path
+import json
 from trainer import Trainer
+from startup import startup_setup
 
 if __name__ == '__main__':
-    trainer = Trainer()
+    settings_path = os.path.join(Path.home(), 'root_painter_settings.json')
+    startup_setup(settings_path)
+    sync_dir = Path(json.load(open(settings_path, 'r'))['sync_dir'])
+    trainer = Trainer(sync_dir)
     trainer.main_loop()
