@@ -21,6 +21,7 @@ import os
 import time
 import warnings
 import threading
+import traceback
 from pathlib import Path
 import json
 import sys
@@ -97,6 +98,9 @@ class Trainer():
             if k == 'file_names':
                 # names dont need a path appending
                 new_config[k] = v
+            elif k == 'classes_rgba':
+                # classes_rgba should not be altered
+                new_config[k] = v
             elif isinstance(v, list):
                 # if its a list fix each string in the list.
                 new_list = []
@@ -131,7 +135,8 @@ class Trainer():
                     config = self.fix_config_paths(json.loads(contents))
                     getattr(self, name)(config)
             except Exception as e:
-                print('Exception parsing instruction', e)
+                tb = traceback.format_exc()
+                print('Exception parsing instruction', e, tb)
                 return False
         else:
             #TODO put in a log and display error to the user.
@@ -341,14 +346,18 @@ class Trainer():
             if not model_paths:
                 create_first_model_with_random_weights(model_dir)
                 model_paths = model_utils.get_latest_model_paths(model_dir, 1)
+        
+        classes_rgba = segment_config['classes_rgba']
         start = time.time()
         for fname in fnames:
             self.segment_file(in_dir, seg_dir, fname,
-                              model_paths, sync_save=len(fnames) == 1)
+                              model_paths, classes_rgba,
+                              sync_save=len(fnames) == 1)
         duration = time.time() - start
         print(f'Seconds to segment {len(fnames)} images: ', round(duration, 3))
 
-    def segment_file(self, in_dir, seg_dir, fname, model_paths, sync_save):
+    def segment_file(self, in_dir, seg_dir, fname,
+                     model_paths, classes_rgba, sync_save):
         fpath = os.path.join(in_dir, fname)
 
         # Segmentations are always saved as PNG.
@@ -371,8 +380,8 @@ class Trainer():
                 raise Exception(f"image {fname} too small to segment. Width "
                                 f" and height must be at least {self.in_w}")
             seg_start = time.time()
-            _, segmented = model_file_segment(model_paths, photo, self.bs,
-                                           self.in_w, self.out_w, self.classes_rgb)
+            segmented_rgba = model_file_segment(model_paths, photo, self.bs,
+                                                self.in_w, self.out_w, classes_rgba)
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
@@ -381,10 +390,10 @@ class Trainer():
                 if sync_save:
                     # other wise do sync because we don't want to delete the segment
                     # instruction too early.
-                    save_then_move(out_path, segmented)
+                    save_then_move(out_path, segmented_rgba)
                 else:
                     # TODO find a cleaner way to do this.
                     # if more than one file then optimize speed over stability.
                     x = threading.Thread(target=save_then_move,
-                                         args=(out_path, segmented))
+                                         args=(out_path, segmented_rgba))
                     x.start()
