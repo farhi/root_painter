@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 from pathlib import Path
+import os
 import json
 from trainer import Trainer
 from startup import startup_setup
