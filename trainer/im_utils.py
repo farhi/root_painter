@@ -192,7 +192,7 @@ def get_coords(image, in_tile_shape, out_tile_shape):
     return tile_coords
 
 
-def seg_to_rgb(seg, classes_rgba):
+def seg_to_rgba(seg, classes_rgba):
     # input class preds are 0-1 and are the output from
     # the CNN before thresholding etc
     # rgb image
