@@ -20,6 +20,7 @@ import shutil
 import json
 import numpy as np
 import torch
+import pytest
 from skimage.io import imread, imsave
 from unet import UNetGNRes
 from model_utils import segment, create_first_model_with_random_weights
@@ -47,6 +48,7 @@ def test_CNN_segment_classes():
     assert output.shape[1] == num_classes
 
 
+@pytest.mark.slow
 def test_segment_large_2D_image(monkeypatch):
     # segmentation method reconstructs the output properly
     
@@ -73,7 +75,7 @@ def test_segment_large_2D_image(monkeypatch):
     assert np.allclose(seg, test_input, atol=0.01)
 
 
-
+@pytest.mark.slow
 def test_2D_segment_instruction():
     """
     A high level integration test for the 
