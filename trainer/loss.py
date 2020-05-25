@@ -32,15 +32,24 @@ def dice_loss(predictions, labels):
     return 1 - ((2 * intersection) / (union))
 
 
-def combined_loss(predictions, labels):
-    """ mix of dice and cross entropy """
+def combined_loss(predictions, defined, labels):
+    """ mix of dice and cross entropy 
+    
+    Shapes of input:
+        predictions : (bs, classes, out_tile_w, out_tile_w)
+        defined: (bs, out_tile_w, out_tile_w))
+        labels: (bs, out_tile_w, out_tile_w)
+    """
     # if they are bigger than 1 you get a strange gpu error
     # without a stack track so you will have no idea why.
-    assert torch.max(labels) <= 1
-    #if torch.sum(labels) > 0:
+
+    # if torch.sum(labels) > 0:
     #    return (dice_loss(predictions, labels) +
     #            (0.3 * cross_entropy(predictions, labels)))
     # When no roots use only cross entropy
     # as dice is undefined.
     #return 0.3 * cross_entropy(predictions, labels)
+
+    
+
     return 0.3 * cross_entropy(predictions, labels)
