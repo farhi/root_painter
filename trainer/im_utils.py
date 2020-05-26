@@ -82,8 +82,11 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
 def get_class_map(annot, class_rgb):
     """ Return binary map defining locations of an image which
         are equal to class_rgb """
-    class_r, class_g, class_b = class_rgb
+    assert annot.dtype == np.ubyte, (
+        f'Annot dtype: {annot.dtype} but should be np.ubyte. '
+        'Each channel in annotation should be 0-255 range')
 
+    class_r, class_g, class_b = class_rgb
     # get the specific RGB channels
     r_channel = annot[:, :, 0]
     g_channel = annot[:, :, 1]
@@ -104,6 +107,10 @@ def annot_to_target_and_mask(annot, target_classes):
     Convert this to a 2D image where each pixel is a value from 0 to maximum class index
     Defining the specific class at that location in the image.
     """
+    assert annot.dtype == np.ubyte, (
+        f'Annot dtype: {annot.dtype} but should be np.ubyte. '
+        'Each channel in annotation should be 0-255 range')
+
     r_channel = annot[:, :, 0]
     g_channel = annot[:, :, 1]
     b_channel = annot[:, :, 2]
