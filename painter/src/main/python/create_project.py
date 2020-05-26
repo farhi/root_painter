@@ -154,7 +154,7 @@ class CreateProjectWidget(QtWidgets.QWidget):
             self.create_project_btn.setEnabled(False)
             return
 
-        if len(self.palette_edit_widget.get_brush_data()) < 3:
+        if len(self.palette_edit_widget.get_brush_data()) < 2:
             self.info_label.setText(f"At least one foreground brush must be specified")
             self.create_project_btn.setEnabled(False)
             return

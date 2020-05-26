@@ -284,13 +284,18 @@ class RootPainter(QtWidgets.QMainWindow):
 
     def segment_image(self, image_fnames):
         # send instruction to segment the new image.
+        seg_classes = copy.deepcopy(self.classes)
+        # Tell server to segment the bg with 0 alpha 
+        assert seg_classes[0][0] == 'Background'
+        seg_classes[0][1][3] = 0  
+        # send instruction to segment the new image.
         content = {
             "dataset_dir": self.dataset_dir,
             "seg_dir": self.seg_dir,
             "file_names": image_fnames,
             "message_dir": self.message_dir,
             "model_dir": self.model_dir,
-            "classes": self.classes
+            "classes": seg_classes
         }
         self.send_instruction('segment', content)
 
@@ -663,6 +668,7 @@ class RootPainter(QtWidgets.QMainWindow):
         self.brush_menu = self.menu_bar.addMenu("Brushes")
         for name, rgba, shortcut in self.classes:
             self.add_brush(name, rgba, shortcut)
+        self.add_brush('Eraser', (255, 205, 180, 0), 'E')
 
     def add_measurements_menu(self, menu_bar):
         # Measurements

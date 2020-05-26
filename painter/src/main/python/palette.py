@@ -151,15 +151,14 @@ class PaletteEditWidget(QtWidgets.QWidget):
     def get_brush_data(self):
         """ Used for saving the brush data to JSON file """
        
-        # These two cannot be edited or removed.    
+        # Background cannot be edited or removed
         brush_data = [
             ('Background', (0, 255, 0, 180), 'W'),
-            ('Eraser', (255, 105, 180, 0), 'E')
         ]
 
         for brush_widget in self.brush_widgets:
             # name, rgba, keyboard shortcut
             brush_data.append([brush_widget.name,
                                brush_widget.color.getRgb(),
-                               str(len(brush_data)-1)])
+                               str(len(brush_data))])
         return brush_data
