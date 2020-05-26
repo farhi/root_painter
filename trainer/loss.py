@@ -23,8 +23,8 @@ cx_loss = torch.nn.CrossEntropyLoss()
 
 def dice_loss(predictions, labels):
     """ based on loss function from V-Net paper """
-    dice_sum = 0
-    classes = torch.unique(labels)
+    classes = torch.unique(labels).long()
+    dices = torch.zeros(len(classes)).cuda()
     softmaxed = softmax(predictions, 1)
     for c in classes:
         # for each of the labels defined in the annotation.
@@ -36,8 +36,8 @@ def dice_loss(predictions, labels):
         class_label_map = class_label_map.view(-1)
         intersection = torch.sum(torch.mul(class_preds, class_label_map))
         union = torch.sum(class_preds) + torch.sum(class_label_map)
-        dice_sum +=  1 - ((2 * intersection) / (union))
-    return dice_sum / classes
+        dices[c] = 1 - ((2 * intersection) / (union))
+    return torch.mean(dices)
 
 
 def combined_loss(predictions, defined, labels):
@@ -58,13 +58,12 @@ def combined_loss(predictions, defined, labels):
     # this is not exactly 0 but it is close. See loss flooding for some ideas
     # why always having a bit more loss might be handy.
     # https://arxiv.org/pdf/2002.08709.pdf
-    predictions[:, 0] += ((torch.ones(defined.shape) - defined) * 80)
-
+    predictions[:, 0] += ((torch.ones(defined.shape).cuda() - defined) * 80)
     # undefined region should be 0
-    labels *= defined 
+    labels *= defined.long()
 
     if torch.sum(labels) > 0:
         return (dice_loss(predictions, labels) +
-               (0.3 * cx_loss(predictions, labels)))
+              (0.3 * cx_loss(predictions, labels)))
     # When only background then use only cross entropy as dice is undefined.
     return 0.3 * cx_loss(predictions, labels)
