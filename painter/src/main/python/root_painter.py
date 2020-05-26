@@ -30,6 +30,7 @@ import os
 from pathlib import PurePath
 import json
 from functools import partial
+import copy
 
 from skimage.io import use_plugin
 from PyQt5 import QtWidgets
