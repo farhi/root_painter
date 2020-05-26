@@ -79,6 +79,7 @@ def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
 
     # for each image 
     for fname, annot in get_val_annots():
+        assert annot.dtype == np.ubyte, str(annot.dtype)
 
         # remove parts where annotation is not defined e.g alhpa=0
         a_channel = annot[:, :, 3]
@@ -92,7 +93,7 @@ def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
             y_true = im_utils.get_class_map(annot, class_rgb)
             y_pred = seg[i]
             
-            assert y_true.shape == y_pred.shape
+            assert y_true.shape == y_pred.shape, str(y_true.shape) + str(y_pred.shape)
             
             # only compute metrics on regions where annotation is defined.
             y_true = y_true.reshape(-1)[y_defined > 0]
