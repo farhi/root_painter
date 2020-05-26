@@ -64,7 +64,7 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
             # so use glob to get it
             image_path = glob.glob(image_path_part + '.*')[0]
             image = load_image(image_path)
-            annot = imread(annot_path).astype(bool)
+            annot = img_as_ubyte(imread(annot_path))
             assert np.sum(annot) > 0
             assert image.shape[2] == 3 # should be RGB
             # also return fname for debugging purposes.
