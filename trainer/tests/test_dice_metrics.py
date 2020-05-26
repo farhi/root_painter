@@ -28,7 +28,7 @@ def test_two_class_dice_perfect_score():
     but using a function with a single class.
     """
     image = np.zeros((100, 100))
-    annot = np.zeros((100, 100, 4))
+    annot = np.zeros((100, 100, 4), dtype=np.ubyte)
     annot[:, :, 3] = 255 # annotation completely defined
     annot[:, :, 0] = 255
     classes_rgb = [[255, 0, 0], [0, 255, 0]]
@@ -59,7 +59,7 @@ def test_two_class_dice_half_score():
     Test that an annotation and prediction can give 0.5 dice
     """
     image = np.zeros((100, 100))
-    annot = np.zeros((100, 100, 4))
+    annot = np.zeros((100, 100, 4), dtype=np.ubyte)
     annot[:, :, 3] = 255 # all defined
     annot[50:, :, 0] = 255
     classes_rgb = [[255, 0, 0], [0, 0, 0]]
@@ -96,7 +96,7 @@ def test_two_class_dice_half_score_with_undefined():
 
     width = 200
     image = np.zeros((100, width))
-    annot = np.zeros((100, width, 4))
+    annot = np.zeros((100, width, 4), dtype=np.ubyte)
 
     # right half of annotation is undefined e.g 0 alpha
     annot[0:, :100, 3] = 255 # first 100 pixels from left are defined.
@@ -150,7 +150,7 @@ def test_four_class_dice_half_score():
     """
 
     image = np.zeros((4, 4))
-    annot = np.zeros((2, 4, 4))
+    annot = np.zeros((2, 4, 4), dtype=np.ubyte)
     classes_rgb = [[10, 0, 0], [20, 0, 0], [30, 0, 0], [40, 0, 0]]
     annot[:, :, 3] = 255 # alpha 255, all pixels defined.
     annot[:, 0, 0] = 10 # top row = class 1
