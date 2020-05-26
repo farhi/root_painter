@@ -217,23 +217,13 @@ class Trainer():
         for step, (im_tiles,
                    target_tiles,
                    defined_tiles) in enumerate(train_loader):
-
             self.check_for_instructions()
             im_tiles = im_tiles.cuda()
             target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
             self.optimizer.zero_grad()
             outputs = self.model(im_tiles)
-            softmaxed = softmax(outputs, 1)
-
-            # remove any of the predictions for which we don't have ground truth
-            # Set outputs to 0 where annotation undefined so that
-            # The network can predict whatever it wants without any penalty.
-            
-            for i in range(len(outputs)):
-                outputs[i, :] *= defined_tiles[i]
-
-            loss = criterion(outputs, target_tiles)
+            loss = criterion(outputs, defined_tiles, target_tiles)
             loss.backward()
             self.optimizer.step()
             loss_sum += loss.item() # float
@@ -269,9 +259,6 @@ class Trainer():
                                                            len(classes))
         cur_metrics = get_val_metrics(copy.deepcopy(self.model))
         prev_metrics = get_val_metrics(prev_model)
-        print('cur metric len', len(cur_metrics))
-        print('prev metric len', len(prev_metrics))
-
         cur_f1 = np.mean([m['dice'] for m in cur_metrics])
         prev_f1 = np.mean([m['dice'] for m in prev_metrics])
         was_saved = save_if_better(model_dir, self.model, prev_path,
