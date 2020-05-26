@@ -91,8 +91,7 @@ def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
         # for each class
         for i, class_rgb in enumerate(classes_rgb):
             y_true = im_utils.get_class_map(annot, class_rgb)
-            y_pred = seg[i]
-            
+            y_pred = seg == i
             assert y_true.shape == y_pred.shape, str(y_true.shape) + str(y_pred.shape)
             
             # only compute metrics on regions where annotation is defined.
@@ -126,6 +125,9 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
         image_path = glob.glob(image_path_part + '.*')[0]
         image = im_utils.load_image(image_path)
         predicted = segment(cnn, image, bs, in_w, out_w)
+        
+        # Need to convert to predicted class.
+        predicted = np.argmax(predicted, 0)
         return predicted
 
     def get_val_annots():

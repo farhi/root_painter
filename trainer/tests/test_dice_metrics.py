@@ -42,7 +42,8 @@ def test_two_class_dice_perfect_score():
         output[0] = class_1_preds
 
         # may need to specify in_w, out_w and bs to use cnn
-        return output
+        # convert to predicted class
+        return np.argmax(output, 0)
 
     def get_val_annots():
         return [[val_fname, annot]]
@@ -76,7 +77,9 @@ def test_two_class_dice_half_score():
         output[1] = class_2_preds
 
         # may need to specify in_w, out_w and bs to use cnn
-        return output
+        # convert to predicted class
+        return np.argmax(output, 0)
+
 
     def get_val_annots():
         return [[val_fname, annot]]
@@ -113,9 +116,9 @@ def test_two_class_dice_half_score_with_undefined():
         output = np.zeros((2, 100, width))
         output[0] = class_1_preds
         output[1] = class_2_preds
-
         # may need to specify in_w, out_w and bs to use cnn
-        return output
+        # convert to predicted class
+        return np.argmax(output, 0)
 
     def get_val_annots():
         return [[val_fname, annot]]
@@ -173,7 +176,8 @@ def test_four_class_dice_half_score():
         output[2, 0, 3] = 1
         output[2, 1, 2] = 1
         # may need to specify in_w, out_w and bs to use cnn
-        return output
+        # convert to predicted class
+        return np.argmax(output, 0)
 
     def get_val_annots():
         return [[val_fname, annot]]
