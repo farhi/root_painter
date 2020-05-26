@@ -25,7 +25,7 @@ def test_get_class_map():
     indicating which pixels in the annotation
     are labeled with that specific RGB.
     """
-    annot = np.zeros((100, 100, 3))
+    annot = np.zeros((100, 100, 3), dtype=np.ubyte)
     annot[10, 10] = [255, 20, 20]
     annot[10, 15] = [255, 20, 20]
     annot[20, 20] = [255, 24, 20]
