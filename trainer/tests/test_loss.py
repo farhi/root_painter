@@ -21,17 +21,71 @@ from loss import combined_loss
 import torch
 
 
-def test_three_class_dice_perfect_score():
+def test_low_loss_when_matching_labels():
     """
-    Test that labels and predictions where nothing is defined 
-    should give 0 loss.
+    Test that labels and prediction should give low loss
+    when they are the same.
     """
     batch_size = 8
     classes = 3
-    predictions = torch.from_numpy(np.zeros((8, 3, 500, 500)))
-    # for this test we predict class 0 (probably background) for all pixels
-    predictions[:, 0] = torch.from_numpy(np.ones((500, 500)).astype(np.int64))
-    defined = torch.from_numpy(np.zeros((8, 500, 500)).astype(np.int64))
-    labels = torch.from_numpy(np.ones((8, 500, 500)).astype(np.int64))
+    out_tile_w = 2
+    predictions = torch.zeros(8, 3, out_tile_w, out_tile_w)
+    # for this test we predict class 0 (background) for all pixels
+    # cx loss actually requires that the predictions be much higher than 1 for 
+    # the target class in order to achieve close to 0 loss.
+    predictions[:, 0] = torch.ones(out_tile_w, out_tile_w, dtype=torch.long) * 8
+    # everything is defined. should have no influence
+    defined = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
+    # we label all tiles to be class 0 (a background class).
+    labels = torch.zeros(8, out_tile_w, out_tile_w, dtype=torch.long)
+    assert combined_loss(predictions, defined, labels) < 0.01
 
-    assert combined_loss(predictions, defined, labels) == 0
+
+def test_high_loss_when_not_matching_labels():
+    batch_size = 8
+    classes = 3
+    out_tile_w = 2
+    predictions = torch.zeros(8, 3, out_tile_w, out_tile_w)
+    # for this test we predict class 0 (background) for all pixels
+    # cx loss actually requires that the predictions be much higher than 1 for 
+    # the target class in order to achieve close to 0 loss.
+    predictions[:, 0] = torch.ones(out_tile_w, out_tile_w, dtype=torch.long) * 8
+    # everything is defined. should have no influence
+    defined = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
+    # we label all tiles to be class 1 (a foreground class) that should cause high error.
+    labels = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
+    assert combined_loss(predictions, defined, labels) > 1.00
+
+def test_low_loss_when_not_matching_labels_but_not_defined():
+    # this would give a large error, except that it won't be considered due to the defined map.
+    batch_size = 8
+    classes = 3
+    out_tile_w = 2
+    predictions = torch.zeros(8, 3, out_tile_w, out_tile_w)
+    # for this test we predict class 0 (background) for all pixels
+    # cx loss actually requires that the predictions be much higher than 1 for 
+    # the target class in order to achieve close to 0 loss.
+    predictions[:, 0] = torch.ones(out_tile_w, out_tile_w, dtype=torch.long) * 8
+    # everything is defined. should have no influence
+    defined = torch.zeros(8, out_tile_w, out_tile_w, dtype=torch.long)
+    # we label all tiles to be class 1 (a foreground class) that should cause high error.
+    labels = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
+    assert combined_loss(predictions, defined, labels) < 0.001
+
+def test_low_loss_when_not_matching_preds_but_undefined():
+    # both labels and predictions can be different to bg but
+    # and different to each other but still give low loss
+    # due to all being undefined. 
+    batch_size = 8
+    classes = 3
+    out_tile_w = 2
+    predictions = torch.zeros(8, 3, out_tile_w, out_tile_w)
+    # for this test we predict class 2 (a fg class) for all pixels
+    # cx loss actually requires that the predictions be much higher than 1 for 
+    # the target class in order to achieve close to 0 loss.
+    predictions[:, 2] = torch.ones(out_tile_w, out_tile_w, dtype=torch.long) * 8
+    # everything is defined. should have no influence
+    defined = torch.zeros(8, out_tile_w, out_tile_w, dtype=torch.long)
+    # we label all tiles to be class 1 (a foreground class) that should cause high error.
+    labels = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
+    assert combined_loss(predictions, defined, labels) < 0.001
