@@ -150,11 +150,9 @@ def save_if_better(model_dir, cur_model, prev_model_path,
         cur_f1 = 0
     if math.isnan(prev_f1):
         prev_f1 = 0
-
     print('prev f1', str(round(prev_f1, 5)).ljust(7, '0'),
           'cur f1', str(round(cur_f1, 5)).ljust(7, '0'))
-    print('cur better', cur_f1 > prev_f1)
-    if True or cur_f1 > prev_f1:
+    if cur_f1 > prev_f1:
         prev_model_fname = os.path.basename(prev_model_path)
         prev_model_num = int(prev_model_fname.split('_')[0])
         model_num = prev_model_num + 1
