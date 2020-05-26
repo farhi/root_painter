@@ -80,6 +80,6 @@ def transform_image(image, def_map, padding=60, channels=3):
     # We presume there are 3 channels. Checking shape is slow.
     for i in range(channels):
         if np.sum(image[:, :, i]):
-            image[:, :, i] = map_coordinates(image[:, :, i], indices, order=1)
+            image[:, :, i] = map_coordinates(image[:, :, i], indices, order=0)
     image = image[padding:-padding, padding:-padding]
     return image
