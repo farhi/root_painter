@@ -92,6 +92,8 @@ def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
             y_true = im_utils.get_class_map(annot, class_rgb)
             y_pred = seg[i]
             
+            assert y_true.shape == y_pred.shape
+            
             # only compute metrics on regions where annotation is defined.
             y_true = y_true.reshape(-1)[y_defined > 0]
             y_pred = y_pred.reshape(-1)[y_defined > 0]
