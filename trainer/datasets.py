@@ -39,7 +39,8 @@ def elastic_transform(photo, annot):
                                       intensity=0.4 + (0.6 * random.random()))
     photo = elastic.transform_image(photo, def_map)
     annot = elastic.transform_image(annot, def_map, channels=3)
-    annot = np.round(annot).astype(np.int64)
+    assert np.sum(annot) == np.sum(np.round(annot)), 'should only consist of ints'
+    annot = annot.astype(np.ubyte)
     return photo, annot
 
 def guassian_noise_transform(photo, annot):
