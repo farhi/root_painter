@@ -86,8 +86,8 @@ def get_class_map(annot, class_rgb):
     assert annot.dtype == np.ubyte, (
         f'Annot dtype: {annot.dtype} but should be np.ubyte. '
         'Each channel in annotation should be 0-255 range')
-
-    class_r, class_g, class_b = class_rgb
+    assert len(class_rgb) >= 3, str(class_rgb)
+    class_r, class_g, class_b = class_rgb[:3]
     # get the specific RGB channels
     r_channel = annot[:, :, 0]
     g_channel = annot[:, :, 1]
