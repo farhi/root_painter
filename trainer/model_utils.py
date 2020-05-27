@@ -69,90 +69,18 @@ def get_prev_model(model_dir, num_classes):
     return prev_model, prev_path
 
 
-def get_class_metrics(get_val_annots, get_seg, classes) -> list:
-    """
-    Segment the validation images and
-    return metrics for each of the classes.
-    """
-    class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class': c} for c in classes]
-    classes_rgb = [c[1][:3] for c in classes]
-
-    # for each image 
-    for fname, annot in get_val_annots():
-        assert annot.dtype == np.ubyte, str(annot.dtype)
-
-        # remove parts where annotation is not defined e.g alhpa=0
-        a_channel = annot[:, :, 3]
-        y_defined = (a_channel > 0).astype(np.int).reshape(-1)
-
-        # load sed, returns a channel for each class
-        seg = get_seg(fname)
-        
-        # for each class
-        for i, c in enumerate(classes):
-            class_rgb = c[1]
-            y_true = im_utils.get_class_map(annot, class_rgb)
-            y_pred = seg == i
-            assert y_true.shape == y_pred.shape, str(y_true.shape) + str(y_pred.shape)
-            
-            # only compute metrics on regions where annotation is defined.
-            y_true = y_true.reshape(-1)[y_defined > 0]
-            y_pred = y_pred.reshape(-1)[y_defined > 0]
-
-            class_metrics[i]['tp'] += np.sum(np.logical_and(y_pred == 1,
-                                                            y_true == 1))
-            class_metrics[i]['tn'] += np.sum(np.logical_and(y_pred == 0,
-                                                            y_true == 0))
-            class_metrics[i]['fp'] += np.sum(np.logical_and(y_pred == 1,
-                                                            y_true == 0))
-            class_metrics[i]['fn'] += np.sum(np.logical_and(y_pred == 0,
-                                                            y_true == 1))
-    for i, m in enumerate(class_metrics):
-        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'], m['class'])
-    return class_metrics
-
-
-def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
-
-    start = time.time()
-    fnames = ls(val_annot_dir)
-    fnames = [a for a in fnames if im_utils.is_photo(a)]
-    cnn.half()
-    
-    
-    def get_seg(fname):
-        image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
-        image_path = glob.glob(image_path_part + '.*')[0]
-        image = im_utils.load_image(image_path)
-        predicted = segment(cnn, image, bs, in_w, out_w)
-        
-        # Need to convert to predicted class.
-        predicted = np.argmax(predicted, 0)
-        return predicted
-
-    def get_val_annots():
-        for fname in fnames:
-            annot_path = os.path.join(val_annot_dir,
-                                      os.path.splitext(fname)[0] + '.png')
-            annot = imread(annot_path)
-            annot = np.array(annot)
-            yield [fname, annot]
-
-    print('Validation duration', time.time() - start)
-    return get_class_metrics(get_val_annots, get_seg, classes)
-
 
 def save_if_better(model_dir, cur_model, prev_model_path,
-                   cur_f1, prev_f1):
+                   cur_loss, prev_loss):
 
     # convert the nans as they don't work in comparison
-    if math.isnan(cur_f1):
-        cur_f1 = 0
-    if math.isnan(prev_f1):
-        prev_f1 = 0
-    print('prev f1', str(round(prev_f1, 5)).ljust(7, '0'),
-          'cur f1', str(round(cur_f1, 5)).ljust(7, '0'))
-    if cur_f1 > prev_f1:
+    if math.isnan(cur_loss):
+        cur_loss = 0
+    if math.isnan(prev_loss):
+        prev_loss = 0
+    print('prev loss', str(round(prev_loss, 5)).ljust(7, '0'),
+          'cur loss', str(round(cur_loss, 5)).ljust(7, '0'))
+    if cur_loss > prev_loss:
         prev_model_fname = os.path.basename(prev_model_path)
         prev_model_num = int(prev_model_fname.split('_')[0])
         model_num = prev_model_num + 1
