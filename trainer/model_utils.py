@@ -69,13 +69,13 @@ def get_prev_model(model_dir, num_classes):
     return prev_model, prev_path
 
 
-def class_metrics(get_val_annots, get_seg, classes) -> list:
+def get_class_metrics(get_val_annots, get_seg, classes) -> list:
     """
     Segment the validation images and
     return metrics for each of the classes.
     """
     class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class': c} for c in classes]
-    
+    classes_rgb = [c[1][:3] for c in classes]
 
     # for each image 
     for fname, annot in get_val_annots():
@@ -119,7 +119,6 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
     fnames = [a for a in fnames if im_utils.is_photo(a)]
     cnn.half()
     
-    classes_rgb = [c[1][:3] for c in classes]
     
     def get_seg(fname):
         image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
@@ -140,7 +139,7 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
             yield [fname, annot]
 
     print('Validation duration', time.time() - start)
-    return class_metrics(get_val_annots, get_seg, classes_rgb)
+    return get_class_metrics(get_val_annots, get_seg, classes)
 
 
 def save_if_better(model_dir, cur_model, prev_model_path,
@@ -223,7 +222,7 @@ def segment(cnn, image, bs, in_w, out_w):
         pred_np = tiles_predictions.data.cpu().numpy()
         num_classes = pred_np.shape[1] # how many output classes
 
-        if seg == None:
+        if seg is None:
             seg_shape = [num_classes] + list(image.shape[:2])
             seg = np.zeros(seg_shape)
 
