@@ -49,7 +49,6 @@ def get_metrics(tp:int, fp:int, tn:int, fn:int, class_name:str, eps=1e-7) -> dic
     precision = tp / (tp + fp + eps)
     recall = tp / (tp + fn + eps)
     f1 = 2 * ((precision * recall) / (precision + recall))
-    iou = tp / (tp + fp + fn)
     return {
         "class": class_name,
         "accuracy": accuracy,
