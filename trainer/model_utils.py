@@ -74,7 +74,7 @@ def class_metrics(get_val_annots, get_seg, classes) -> list:
     Segment the validation images and
     return metrics for each of the classes.
     """
-    class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class_name': c} for c in classes]
+    class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class': c} for c in classes]
     
 
     # for each image 
@@ -107,7 +107,7 @@ def class_metrics(get_val_annots, get_seg, classes) -> list:
             class_metrics[i]['fn'] += np.sum(np.logical_and(y_pred == 0,
                                                             y_true == 1))
     for i, m in enumerate(class_metrics):
-        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'])
+        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'], m['class'])
     return class_metrics
 
 
