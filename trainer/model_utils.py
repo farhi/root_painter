@@ -69,13 +69,13 @@ def get_prev_model(model_dir, num_classes):
     return prev_model, prev_path
 
 
-def class_metrics(get_val_annots, get_seg, classes_rgb) -> list:
+def class_metrics(get_val_annots, get_seg, classes) -> list:
     """
     Segment the validation images and
     return metrics for each of the classes.
     """
-    class_metrics = [{'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0}]
-    class_metrics *= len(classes_rgb)
+    class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class_name': c} for c in classes]
+    
 
     # for each image 
     for fname, annot in get_val_annots():
