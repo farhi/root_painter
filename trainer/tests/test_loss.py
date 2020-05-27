@@ -38,7 +38,7 @@ def test_low_loss_when_matching_labels():
     defined = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
     # we label all tiles to be class 0 (a background class).
     labels = torch.zeros(8, out_tile_w, out_tile_w, dtype=torch.long)
-    assert combined_loss(predictions, defined, labels) < 0.01
+    assert combined_loss(predictions.cuda(), defined.cuda(), labels.cuda()) < 0.01
 
 
 def test_high_loss_when_not_matching_labels():
@@ -54,7 +54,7 @@ def test_high_loss_when_not_matching_labels():
     defined = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
     # we label all tiles to be class 1 (a foreground class) that should cause high error.
     labels = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
-    assert combined_loss(predictions, defined, labels) > 1.00
+    assert combined_loss(predictions.cuda(), defined.cuda(), labels.cuda()) > 1.00
 
 def test_low_loss_when_not_matching_labels_but_not_defined():
     # this would give a large error, except that it won't be considered due to the defined map.
@@ -70,7 +70,7 @@ def test_low_loss_when_not_matching_labels_but_not_defined():
     defined = torch.zeros(8, out_tile_w, out_tile_w, dtype=torch.long)
     # we label all tiles to be class 1 (a foreground class) that should cause high error.
     labels = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
-    assert combined_loss(predictions, defined, labels) < 0.001
+    assert combined_loss(predictions.cuda(), defined.cuda(), labels.cuda()) < 0.001
 
 def test_low_loss_when_not_matching_preds_but_undefined():
     # both labels and predictions can be different to bg but
@@ -88,4 +88,4 @@ def test_low_loss_when_not_matching_preds_but_undefined():
     defined = torch.zeros(8, out_tile_w, out_tile_w, dtype=torch.long)
     # we label all tiles to be class 1 (a foreground class) that should cause high error.
     labels = torch.ones(8, out_tile_w, out_tile_w, dtype=torch.long)
-    assert combined_loss(predictions, defined, labels) < 0.001
+    assert combined_loss(predictions.cuda(), defined.cuda(), labels.cuda()) < 0.001
