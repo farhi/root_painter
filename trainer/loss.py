@@ -23,10 +23,13 @@ cx_loss = torch.nn.CrossEntropyLoss()
 
 def dice_loss(predictions, labels):
     """ based on loss function from V-Net paper """
+
     classes = torch.unique(labels).long()
     dices = torch.zeros(len(classes)).cuda()
     softmaxed = softmax(predictions, 1)
-    for c in classes:
+
+    assert len(dices) == len(classes), f"{len(dices)},{len(classes)}"
+    for c in range(len(classes)):
         # for each of the labels defined in the annotation.
         # get the specific class prediction
         class_preds = softmaxed[:, c, :]  
@@ -58,12 +61,13 @@ def combined_loss(predictions, defined, labels):
     # this is not exactly 0 but it is close. See loss flooding for some ideas
     # why always having a bit more loss might be handy.
     # https://arxiv.org/pdf/2002.08709.pdf
+    # TODO. Don't do this. There has to be a better way. this is probably screwing things up 
     predictions[:, 0] += ((torch.ones(defined.shape).cuda() - defined) * 80)
     # undefined region should be 0
     labels *= defined.long()
 
     if torch.sum(labels) > 0:
-        return (dice_loss(predictions, labels) +
-              (0.3 * cx_loss(predictions, labels)))
+        return dice_loss(predictions, labels)
+                         (0.3 * cx_loss(predictions, labels)))
     # When only background then use only cross entropy as dice is undefined.
     return 0.3 * cx_loss(predictions, labels)
