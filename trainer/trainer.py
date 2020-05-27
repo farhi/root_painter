@@ -259,6 +259,12 @@ class Trainer():
                                                            len(classes))
         cur_metrics = get_val_metrics(copy.deepcopy(self.model))
         prev_metrics = get_val_metrics(prev_model)
+
+        for m in cur_metrics:
+            print(m['class'][0], 'true_mean', round(m['true_mean'], 3), 'pred_mean', 
+                  round(m['pred_mean'], 3), round(m['dice'], 3))
+        print('')
+
         cur_f1 = np.mean([m['dice'] for m in cur_metrics])
         prev_f1 = np.mean([m['dice'] for m in prev_metrics])
         was_saved = save_if_better(model_dir, self.model, prev_path,
