@@ -21,7 +21,7 @@ from torch.nn.functional import cross_entropy
 
 cx_loss = torch.nn.CrossEntropyLoss()
 
-def dice_loss(predictions, labels):
+def dice_loss(predictions, labels, eps=1e-7):
     """ based on loss function from V-Net paper """
 
     classes = torch.unique(labels).long()
@@ -39,7 +39,7 @@ def dice_loss(predictions, labels):
         class_label_map = class_label_map.view(-1)
         intersection = torch.sum(torch.mul(class_preds, class_label_map))
         union = torch.sum(class_preds) + torch.sum(class_label_map)
-        dices[c] = 1 - ((2 * intersection) / (union))
+        dices[c] = 1 - ((2 * intersection) / (union + eps))
     return torch.mean(dices)
 
 
