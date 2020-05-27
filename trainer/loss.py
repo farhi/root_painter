@@ -67,7 +67,6 @@ def combined_loss(predictions, defined, labels):
     labels *= defined.long()
 
     if torch.sum(labels) > 0:
-        return dice_loss(predictions, labels)
-                         (0.3 * cx_loss(predictions, labels)))
+        return dice_loss(predictions, labels) + (0.3 * cx_loss(predictions, labels))
     # When only background then use only cross entropy as dice is undefined.
     return 0.3 * cx_loss(predictions, labels)
