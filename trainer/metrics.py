@@ -38,7 +38,7 @@ def get_metric_csv_row(metrics):
     return ','.join([str(p) for p in parts]) + '\n'
 
 
-def get_metrics(tp:int, fp:int, tn:int, fn:int) -> dict:
+def get_metrics(tp:int, fp:int, tn:int, fn:int, class_name:str) -> dict:
     # for the mtrics function in model utils
     assert not np.isnan(tp)
     assert not np.isnan(fp)
@@ -54,6 +54,7 @@ def get_metrics(tp:int, fp:int, tn:int, fn:int) -> dict:
     else:
         precision = recall = f1 = iou = float('NaN')
     return {
+        "class": class_name,
         "accuracy": accuracy,
         "tp": tp,
         "fp": fp,
