@@ -60,8 +60,6 @@ class CreateProjectWidget(QtWidgets.QWidget):
         self.add_info_label()
         self.add_create_btn()
 
-
-
     def add_im_dir_widget(self):
         # Add specify image directory button
         directory_label = QtWidgets.QLabel()
