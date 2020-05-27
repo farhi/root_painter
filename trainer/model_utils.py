@@ -89,7 +89,8 @@ def class_metrics(get_val_annots, get_seg, classes) -> list:
         seg = get_seg(fname)
         
         # for each class
-        for i, class_rgb in enumerate(classes_rgb):
+        for i, c in enumerate(classes):
+            class_rgb = c[1]
             y_true = im_utils.get_class_map(annot, class_rgb)
             y_pred = seg == i
             assert y_true.shape == y_pred.shape, str(y_true.shape) + str(y_pred.shape)
