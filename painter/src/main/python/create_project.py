@@ -226,7 +226,7 @@ class CreateProjectWidget(QtWidgets.QWidget):
             original_model_file = self.selected_model
 
 
-        dataset = os.path.basename(dataset_path)
+        dataset = dataset_path.replace(datasets_dir, '')[1:]
         # get files in random order for training.
         all_fnames = os.listdir(dataset_path)
         # images only
