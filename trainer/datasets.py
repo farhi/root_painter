@@ -28,7 +28,7 @@ from PIL import Image
 from skimage import img_as_float32
 from skimage.exposure import rescale_intensity
 
-from im_utils import load_train_image_and_annot, annot_to_target_and_mask
+from im_utils import load_image_and_annot, annot_to_target_and_mask
 from file_utils import ls
 import im_utils
 import elastic
@@ -87,9 +87,9 @@ class UNetTransformer():
         return photo, annot
 
 
-class TrainDataset(Dataset):
-    def __init__(self, train_annot_dir, dataset_dir, in_w, out_w,
-                 classes):
+class RPDataset(Dataset):
+    def __init__(self, annot_dir, dataset_dir, in_w, out_w, classes,
+                 mode):
         """
         in_w and out_w are the tile size in pixels
 
@@ -99,23 +99,23 @@ class TrainDataset(Dataset):
             The value of the elmenent is the rgba (int, int, int) used to draw this 
             class in the annotation.
         """
-
+        self.mode = mode
         target_classes = [c[1][:3] for c in classes]
         self.in_w = in_w
         self.out_w = out_w
-        self.train_annot_dir = train_annot_dir
+        self.annot_dir = annot_dir
         self.target_classes = target_classes
         self.dataset_dir = dataset_dir
-        self.augmentor = UNetTransformer()
+        if mode == 'train':
+            self.augmentor = UNetTransformer()
 
     def __len__(self):
-        # use at least 612 but when dataset gets bigger start to expand
-        # to prevent validation from taking all the time (relatively)
-        return max(612, len(ls(self.train_annot_dir)) * 2)
+        return 306 # ls(self.annot_dir))
 
-    def __getitem__(self, _):
-        image, annot, _ = load_train_image_and_annot(self.dataset_dir,
-                                                     self.train_annot_dir)
+    def __getitem__(self, i):
+        # todo this is a little too random for validation.
+        image, annot, _ = load_image_and_annot(self.dataset_dir,
+                                               self.annot_dir)
         tile_pad = (self.in_w - self.out_w) // 2
 
         # ensures each pixel is sampled with equal chance
@@ -154,8 +154,9 @@ class TrainDataset(Dataset):
 
         im_tile = img_as_float32(im_tile)
         im_tile = im_utils.normalize_tile(im_tile)
-        im_tile, annot_tile = self.augmentor.transform(im_tile, annot_tile)
-        im_tile = im_utils.normalize_tile(im_tile)
+        if self.mode == 'train': 
+            im_tile, annot_tile = self.augmentor.transform(im_tile, annot_tile)
+            im_tile = im_utils.normalize_tile(im_tile)
 
         # Annotion is cropped post augmentation to ensure
         # elastic grid doesn't remove the edges.
@@ -171,5 +172,4 @@ class TrainDataset(Dataset):
         im_tile = im_tile.astype(np.float32)
         im_tile = np.moveaxis(im_tile, -1, 0)
         im_tile = torch.from_numpy(im_tile)
-
         return im_tile, target, mask
