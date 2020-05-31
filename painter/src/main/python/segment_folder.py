@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #pylint: disable=I1101,C0111,W0201,R0903,E0611, R0902, R0914
 import os
 import time
+import copy
 from PyQt5 import QtWidgets
 from PyQt5 import QtCore
 from progress_widget import BaseProgressWidget
@@ -63,7 +64,7 @@ class SegmentFolderWidget(QtWidgets.QWidget):
 
     submit = QtCore.pyqtSignal()
 
-    def __init__(self, sync_dir, instruction_dir, classes_rgba):
+    def __init__(self, sync_dir, instruction_dir, classes):
         super().__init__()
 
         self.input_dir = None
@@ -71,7 +72,7 @@ class SegmentFolderWidget(QtWidgets.QWidget):
         self.selected_models = []
         self.instruction_dir = instruction_dir
         self.sync_dir = sync_dir
-        self.classes_rgba = classes_rgba
+        self.classes = classes
         self.initUI()
 
     def segment_folder(self):
@@ -80,13 +81,19 @@ class SegmentFolderWidget(QtWidgets.QWidget):
         output_dir = self.output_dir
         all_fnames = os.listdir(str(input_dir))
         all_fnames = [f for f in all_fnames if is_image(f)]
+
+        seg_classes = copy.deepcopy(self.classes)
+        # Tell server to segment the bg with 0 alpha 
+        assert seg_classes[0][0] == 'Background'
+        seg_classes[0][1][3] = 0  
+
         # need to make sure all train photos are copied now.
         content = {
             "model_paths": selected_models,
             "dataset_dir": input_dir,
             "seg_dir": output_dir,
             "file_names": all_fnames,
-            "classes_rgba": self.classes_rgba
+            "classes": seg_classes
         }
         send_instruction('segment', content, self.instruction_dir, self.sync_dir)
         self.progress_widget = SegmentProgressWidget()
