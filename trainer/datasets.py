@@ -19,16 +19,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import random
 import math
 import os
+import glob
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import ColorJitter
 from PIL import Image
-from skimage import img_as_float32
+from skimage.io import imread
+from skimage import img_as_float32, img_as_ubyte
 from skimage.exposure import rescale_intensity
 
-from im_utils import load_image_and_annot, annot_to_target_and_mask
+from im_utils import load_train_image_and_annot, annot_to_target_and_mask
 from file_utils import ls
 import im_utils
 import elastic
@@ -89,7 +91,7 @@ class UNetTransformer():
 
 class RPDataset(Dataset):
     def __init__(self, annot_dir, dataset_dir, in_w, out_w, classes,
-                 mode):
+                 mode, val_tile_refs=None):
         """
         in_w and out_w are the tile size in pixels
 
@@ -106,16 +108,23 @@ class RPDataset(Dataset):
         self.annot_dir = annot_dir
         self.target_classes = target_classes
         self.dataset_dir = dataset_dir
-        if mode == 'train':
+        self.val_tiles_refs = val_tile_refs
+        if self.mode == 'train':
             self.augmentor = UNetTransformer()
 
     def __len__(self):
-        return 306 # ls(self.annot_dir))
+        if self.mode == 'val':
+            return len(self.val_tiles_refs)
+        else:
+            # use at least 612 but when dataset gets bigger start to expand
+            # to prevent validation from taking all the time (relatively)
+            return max(612, len(ls(self.annot_dir)) * 2)
 
-    def __getitem__(self, i):
+
+    def get_train_item(self, i):
         # todo this is a little too random for validation.
-        image, annot, _ = load_image_and_annot(self.dataset_dir,
-                                               self.annot_dir)
+        image, annot, _ = load_train_image_and_annot(self.dataset_dir,
+                                                     self.annot_dir)
         tile_pad = (self.in_w - self.out_w) // 2
 
         # ensures each pixel is sampled with equal chance
@@ -154,14 +163,14 @@ class RPDataset(Dataset):
 
         im_tile = img_as_float32(im_tile)
         im_tile = im_utils.normalize_tile(im_tile)
-        if self.mode == 'train': 
-            im_tile, annot_tile = self.augmentor.transform(im_tile, annot_tile)
-            im_tile = im_utils.normalize_tile(im_tile)
+        im_tile, annot_tile = self.augmentor.transform(im_tile, annot_tile)
+        im_tile = im_utils.normalize_tile(im_tile)
 
         # Annotion is cropped post augmentation to ensure
         # elastic grid doesn't remove the edges.
         annot_tile = annot_tile[tile_pad:-tile_pad, tile_pad:-tile_pad]
         target, mask = annot_to_target_and_mask(annot_tile, self.target_classes)
+
 
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)
@@ -173,3 +182,38 @@ class RPDataset(Dataset):
         im_tile = np.moveaxis(im_tile, -1, 0)
         im_tile = torch.from_numpy(im_tile)
         return im_tile, target, mask
+
+    def get_val_item(self, tile_ref, i):
+        fname, (x, y), _ = tile_ref
+        annot_path = os.path.join(self.annot_dir, fname)
+        image_path_part = os.path.join(self.dataset_dir, os.path.splitext(fname)[0])
+        # it's possible the image has a different extenstion
+        # so use glob to get it
+        image_path = glob.glob(image_path_part + '.*')[0]
+        image = im_utils.load_image(image_path)
+        tile_pad = (self.in_w - self.out_w) // 2
+
+        padded_im = im_utils.pad(image, tile_pad)
+        im_tile = padded_im[y:y+self.in_w,
+                            x:x+self.in_w]
+        im_tile = img_as_float32(im_tile)
+        im_tile = im_utils.normalize_tile(im_tile)
+        annot = img_as_ubyte(imread(annot_path))
+        assert np.sum(annot) > 0
+        assert image.shape[2] == 3 # should be RGB
+        annot_tile = annot[y:y+self.out_w, x:x+self.out_w]
+        target, mask = annot_to_target_and_mask(annot_tile, self.target_classes)
+        mask = mask.astype(np.float32)
+        mask = torch.from_numpy(mask)
+        target = target.astype(np.int64)
+        target = torch.from_numpy(target)
+        im_tile = im_tile.astype(np.float32)
+        im_tile = np.moveaxis(im_tile, -1, 0)
+        im_tile = torch.from_numpy(im_tile)
+        return im_tile, target, mask
+
+    def __getitem__(self, i):
+        if self.mode == 'val':
+            return self.get_val_item(self.val_tiles_refs[i], i)
+        elif self.mode == 'train':
+            return self.get_train_item(i)
