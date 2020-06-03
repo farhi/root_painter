@@ -29,6 +29,7 @@ from skimage import img_as_ubyte
 from skimage.exposure import rescale_intensity
 from skimage.io import imread, imsave
 from file_utils import ls
+import im_utils
 
 
 def is_photo(fname):
@@ -173,10 +174,86 @@ def add_gaussian_noise(image, sigma):
     gaussian_noise = gaussian_noise.reshape(image.shape)
     return image + gaussian_noise
 
-def get_coords(padded_im, image, in_tile_shape, out_tile_shape):
 
-    horizontal_count = ceil(image.shape[1] / out_tile_shape[1])
-    vertical_count = ceil(image.shape[0] / out_tile_shape[0])
+def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w):
+    """
+    Get tile info which covers all annotated regions of the annotation dataset.
+    The list must be structured such that an index can be used to refer to each example
+    so that it can be used with a dataloader.
+
+    returns tile_refs (list)
+        Each element of tile_refs is a list that includes:
+            * image file name (string) - for loading the image from disk during validation 
+            * coord (x int, y int) - for addressing the location within the padded image
+            * annot_mtime (int)
+                The image annotation may get updated by the user at any time.
+                We can use the mtime to check for this.
+                If the annotation has changed then we need to retrieve tile 
+                coords for this image again. The reason for this is that we
+                only want tile coords with annotations in. The user may have added or removed
+                annotation in part of an image. This could mean a different set of coords (or
+                not) should be returned for this image.
+
+    Parameter prev_tile_refs is used for comparing both file names and mtime.
+
+    The annot_dir folder should be checked for any new files (not in prev_tile_refs) or files with
+    an mtime different from prev_tile_refs. For these file, the image should be loaded and new tile_refs
+    should be retrieved. For all other images the tile_refs from prev_tile_refs can be used.
+    """
+    tile_refs = []
+    cur_annot_fnames = ls(annot_dir)
+    prev_annot_fnames = [r[0] for r in prev_tile_refs]
+    all_annot_fnames = set(cur_annot_fnames + prev_annot_fnames)
+    for fname in all_annot_fnames: 
+        # get existing coord refs for this image
+        prev_refs = [r for r in prev_tile_refs if r[0] == fname]
+        prev_mtimes = [r[2] for r in prev_tile_refs if r[0] == fname]
+        need_new_refs = False
+        # if no refs for this image then check again
+        if not prev_refs:
+            need_new_refs = True
+        else:
+            # otherwise check the modified time of the refs against the file.
+            prev_mtime = prev_mtimes[0]
+            cur_mtime = os.path.getmtime(os.path.join(annot_dir, fname))
+            # if file has been updated then get new refs
+            if cur_mtime > prev_mtime:
+                need_new_refs = True
+        if need_new_refs:
+            new_file_refs = get_val_tile_refs_for_annot(annot_dir, fname, in_w, out_w)
+            tile_refs += new_file_refs
+        else:
+            tile_refs += prev_refs
+    return tile_refs
+
+
+def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
+    width_diff = in_w - out_w
+    pad_width = width_diff // 2
+    annot_path = os.path.join(annot_dir, annot_fname)
+    annot = img_as_ubyte(imread(annot_path))
+    new_file_refs = []
+    annot_path = os.path.join(annot_dir, annot_fname)
+    padded_im_shape = (annot.shape[0] + (pad_width * 2), 
+                       annot.shape[1] + (pad_width * 2))
+    out_tile_shape = (out_w, out_w)
+    coords = im_utils.get_coords(padded_im_shape, annot.shape,
+                                 in_tile_shape=(in_w, in_w, 3),
+                                 out_tile_shape=out_tile_shape)
+    mtime = os.path.getmtime(annot_path)
+    for (x, y) in coords:
+        annot_tile = annot[y:y+out_w, x:x+out_w]
+        # we only want to validate on annotation tiles
+        # which have annotation information.
+        if np.sum(annot_tile):
+            new_file_refs.append([annot_fname, [x, y] , mtime])
+    return new_file_refs
+
+
+def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
+
+    horizontal_count = ceil(im_shape[1] / out_tile_shape[1])
+    vertical_count = ceil(im_shape[0] / out_tile_shape[0])
 
     # first split the image based on the tiles that fit
     x_coords = [h*out_tile_shape[1] for h in range(horizontal_count-1)]
@@ -186,8 +263,8 @@ def get_coords(padded_im, image, in_tile_shape, out_tile_shape):
     # (Might go outside the image)
     # so get the tile positiion by subtracting tile size from the
     # edge of the image.
-    right_x = padded_im.shape[1] - in_tile_shape[1]
-    bottom_y = padded_im.shape[0] - in_tile_shape[0]
+    right_x = padded_im_shape[1] - in_tile_shape[1]
+    bottom_y = padded_im_shape[0] - in_tile_shape[0]
 
     y_coords.append(bottom_y)
     x_coords.append(right_x)
@@ -227,6 +304,7 @@ def save_then_move(out_path, seg_alpha):
     temp_path = os.path.join('/tmp', fname)
     imsave(temp_path, seg_alpha)
     shutil.move(temp_path, out_path)
+
 
 def load_image(photo_path):
     photo = imread(photo_path)
