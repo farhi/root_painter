@@ -204,9 +204,6 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w):
     cur_annot_fnames = ls(annot_dir)
     prev_annot_fnames = [r[0] for r in prev_tile_refs]
     all_annot_fnames = set(cur_annot_fnames + prev_annot_fnames)
-    print('in utils', annot_dir)
-    print('cur annot fnames = ', cur_annot_fnames)
-    print('prev annot fnames = ', cur_annot_fnames)
 
     for fname in all_annot_fnames: 
         # get existing coord refs for this image
