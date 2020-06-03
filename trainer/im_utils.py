@@ -204,6 +204,10 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w):
     cur_annot_fnames = ls(annot_dir)
     prev_annot_fnames = [r[0] for r in prev_tile_refs]
     all_annot_fnames = set(cur_annot_fnames + prev_annot_fnames)
+    print('in utils', annot_dir)
+    print('cur annot fnames = ', cur_annot_fnames)
+    print('prev annot fnames = ', cur_annot_fnames)
+
     for fname in all_annot_fnames: 
         # get existing coord refs for this image
         prev_refs = [r for r in prev_tile_refs if r[0] == fname]
@@ -216,6 +220,7 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w):
             # otherwise check the modified time of the refs against the file.
             prev_mtime = prev_mtimes[0]
             cur_mtime = os.path.getmtime(os.path.join(annot_dir, fname))
+
             # if file has been updated then get new refs
             if cur_mtime > prev_mtime:
                 need_new_refs = True
@@ -246,7 +251,7 @@ def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
         # we only want to validate on annotation tiles
         # which have annotation information.
         if np.sum(annot_tile):
-            new_file_refs.append([annot_fname, [x, y] , mtime])
+            new_file_refs.append([annot_fname, [x, y], mtime])
     return new_file_refs
 
 
