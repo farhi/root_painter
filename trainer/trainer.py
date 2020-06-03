@@ -33,16 +33,17 @@ import numpy as np
 import torch
 from torch.nn.functional import softmax
 from torch.utils.data import DataLoader
-from loss import combined_loss as criterion
+from loss import multiclass_loss as criterion
 
-from datasets import TrainDataset
+from datasets import RPDataset
 from metrics import get_metrics, get_metrics_str, get_metric_csv_row
-from model_utils import model_file_segment
+from model_utils import ensemble_segment
 from model_utils import create_first_model_with_random_weights
 import model_utils
 from model_utils import save_if_better
 
-from im_utils import is_photo, load_image, save_then_move
+from im_utils import is_photo, load_image, save_then_move, load_train_image_and_annot
+import im_utils
 from file_utils import ls
 
 
@@ -66,6 +67,7 @@ class Trainer():
         self.bs = 8 # total_mem // mem_per_item
         print('Batch size', self.bs)
         self.optimizer = None
+        self.val_tile_refs = []
         # used to check for updates
         self.annot_mtimes = []
         self.msg_dir = None
@@ -86,7 +88,9 @@ class Trainer():
                 # can take a while so checks for
                 # new instructions are also made inside
                 # train_one_epcoh
-                self.train_one_epoch()
+                self.one_epoch(self.model, 'train')
+            if self.training:
+                self.validation()
             else:
                 self.first_loop = True
                 time.sleep(1.0)
@@ -158,10 +162,7 @@ class Trainer():
             self.msg_dir = self.train_config['message_dir']
             model_dir = self.train_config['model_dir']
             classes = self.train_config['classes']
-            self.train_set = TrainDataset(self.train_config['train_annot_dir'],
-                                          self.train_config['dataset_dir'],
-                                          self.in_w, self.out_w,
-                                          classes)
+
             model_paths = model_utils.get_latest_model_paths(model_dir, 1)
             if model_paths:
                 self.model = model_utils.load_model(model_paths[0], num_classes=len(classes))
@@ -190,10 +191,11 @@ class Trainer():
         """ write a message for the user (client) """
         Path(os.path.join(self.msg_dir, message)).touch()
 
-    def train_one_epoch(self):
-        train_annot_dir = self.train_config['train_annot_dir']
-        val_annot_dir = self.train_config['val_annot_dir']
-        if not [is_photo(a) for a in ls(train_annot_dir)]:
+    def one_epoch(self, model, mode='train'):
+
+        # mode is train or val
+        annot_dir = self.train_config[f'{mode}_annot_dir']
+        if not [is_photo(a) for a in ls(annot_dir)]:
             return
 
         if self.first_loop:
@@ -201,13 +203,34 @@ class Trainer():
             self.write_message('Training started')
             self.log('Starting Training')
 
-        train_loader = DataLoader(self.train_set, self.bs, shuffle=True,
-                                  # 12 workers is good for performance
-                                  # on 2 RTX2080 Tis
-                                  # 0 workers is good for debugging
-                                  num_workers=12, drop_last=False, pin_memory=True)
+        val_tile_refs = None # only use these for validation.
+        dataset = None
+        
+        if mode == 'val':
+            self.val_tile_refs = im_utils.get_val_tile_refs(annot_dir,
+                                                            copy.deepcopy(self.val_tile_refs),
+                                                            self.in_w, self.out_w)
+            print('val tile refs', len(self.val_tile_refs))
+            dataset = RPDataset(self.train_config['val_annot_dir'],
+                                self.train_config['dataset_dir'],
+                                self.in_w, self.out_w,
+                                self.train_config['classes'],
+                                'val', self.val_tile_refs)
+        elif mode == 'train':
+            dataset = RPDataset(self.train_config['train_annot_dir'],
+                                self.train_config['dataset_dir'],
+                                self.in_w, self.out_w,
+                                self.train_config['classes'], 'train')
+        else:
+            raise Exception(f"Invalid mode: {mode}")
+        
+        loader = DataLoader(dataset, self.bs, shuffle=(mode=='train'), num_workers=16,
+                            drop_last=False, pin_memory=True)
+
         epoch_start = time.time()
-        self.model.train()
+        if mode == 'train':
+            model.train()
+
         tps = 0
         fps = 0
         tns = 0
@@ -216,59 +239,46 @@ class Trainer():
         loss_sum = 0
         for step, (im_tiles,
                    target_tiles,
-                   defined_tiles) in enumerate(train_loader):
+                   defined_tiles) in enumerate(loader):
+
             self.check_for_instructions()
             im_tiles = im_tiles.cuda()
             target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
             self.optimizer.zero_grad()
-            outputs = self.model(im_tiles)
+            outputs = model(im_tiles)
             loss = criterion(outputs, defined_tiles, target_tiles)
-            loss.backward()
-            self.optimizer.step()
+
+            if mode == 'train':            
+                loss.backward()
+                self.optimizer.step()
+
             loss_sum += loss.item() # float
-            sys.stdout.write(f"Training {(step+1) * self.bs}/"
-                             f"{len(train_loader.dataset)} "
+
+            sys.stdout.write(f"{mode} {(step+1) * self.bs}/"
+                             f"{len(loader.dataset)} "
                              f" loss={round(loss.item(), 3)} \r")
             self.check_for_instructions() # could update training parameter
-            if not self.training:
+            if not self.training: # in this context we consider validation part of training.
                 return
-
         duration = round(time.time() - epoch_start, 3)
-        print('epoch train duration', duration)
-        before_val_time = time.time()
-        self.validation()
-        print('epoch validation duration', time.time() - before_val_time)
+        print(f'{mode} epoch duration', duration)
+        return loss_sum
 
     def validation(self):
-        """ Get validation set metrics for current model and previous model.
-             log those metrics and update the model if the
-             current model is better than the previous model.
-             Also stop training if the current model hasnt
-             beat the previous model for {max_epochs}
+        """ Get validation set loss for current model and previous model.
+            log those metrics and update the model if the
+            current model is better than the previous model.
+            Also stop training if the current model hasnt
+            beat the previous model for {max_epochs}
         """
         model_dir = self.train_config['model_dir']
-        classes = self.train_config['classes']
-        get_val_metrics = partial(model_utils.get_val_metrics,
-                                  val_annot_dir=self.train_config['val_annot_dir'],
-                                  dataset_dir=self.train_config['dataset_dir'],
-                                  in_w=self.in_w, out_w=self.out_w, bs=self.bs,
-                                  classes=classes)
-
         prev_model, prev_path = model_utils.get_prev_model(model_dir,
-                                                           len(classes))
-        cur_metrics = get_val_metrics(copy.deepcopy(self.model))
-        prev_metrics = get_val_metrics(prev_model)
-
-        for m in cur_metrics:
-            print(m['class'][0], 'true_mean', round(m['true_mean'], 3), 'pred_mean', 
-                  round(m['pred_mean'], 3), round(m['dice'], 3))
-        print('')
-
-        cur_f1 = np.mean([m['dice'] for m in cur_metrics])
-        prev_f1 = np.mean([m['dice'] for m in prev_metrics])
+                                                           len(self.train_config['classes']))
+        cur_loss = self.one_epoch(copy.deepcopy(self.model), 'val')
+        prev_loss = self.one_epoch(prev_model, 'val')
         was_saved = save_if_better(model_dir, self.model, prev_path,
-                                   cur_f1, prev_f1)
+                                   cur_loss, prev_loss)
         if was_saved:
             self.epochs_without_progress = 0
         else:
@@ -288,15 +298,6 @@ class Trainer():
             self.log(message)
             self.training = False
             self.write_message(message)
-
-    def write_train_metrics(self, metrics):
-        metric_str = get_metrics_str(metrics,
-                                     to_use=['f1_score', 'recall',
-                                             'precision', 'duration'])
-        message = 'Training-' + metric_str
-        print(message)
-        self.log(message)
-        self.write_message(message)
 
     def log(self, message):
         with open(os.path.join(self.sync_dir, 'server_log.txt'), 'a+') as log_file:
@@ -370,7 +371,7 @@ class Trainer():
                 raise Exception(f"image {fname} too small to segment. Width "
                                 f" and height must be at least {self.in_w}")
             seg_start = time.time()
-            segmented_rgba = model_file_segment(model_paths, im, self.bs,
+            segmented_rgba = ensemble_segment(model_paths, im, self.bs,
                                                 self.in_w, self.out_w, classes_rgba)
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.

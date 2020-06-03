@@ -68,7 +68,6 @@ def get_prev_model(model_dir, num_classes):
     prev_model = load_model(prev_path, num_classes)
     return prev_model, prev_path
 
-
 def get_class_metrics(get_val_annots, get_seg, classes) -> list:
     """
     Segment the validation images and
@@ -142,17 +141,18 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
     return get_class_metrics(get_val_annots, get_seg, classes)
 
 
+
 def save_if_better(model_dir, cur_model, prev_model_path,
-                   cur_f1, prev_f1):
+                   cur_loss, prev_loss):
 
     # convert the nans as they don't work in comparison
-    if math.isnan(cur_f1):
-        cur_f1 = 0
-    if math.isnan(prev_f1):
-        prev_f1 = 0
-    print('prev f1', str(round(prev_f1, 5)).ljust(7, '0'),
-          'cur f1', str(round(cur_f1, 5)).ljust(7, '0'))
-    if cur_f1 > prev_f1:
+    if math.isnan(cur_loss):
+        cur_loss = 0
+    if math.isnan(prev_loss):
+        prev_loss = 0
+    print('prev loss', str(round(prev_loss, 5)).ljust(7, '0'),
+          'cur loss', str(round(cur_loss, 5)).ljust(7, '0'))
+    if cur_loss < prev_loss:
         prev_model_fname = os.path.basename(prev_model_path)
         prev_model_num = int(prev_model_fname.split('_')[0])
         model_num = prev_model_num + 1
@@ -165,13 +165,24 @@ def save_if_better(model_dir, cur_model, prev_model_path,
     return False
 
 
-def model_file_segment(model_paths, image, bs, in_w, out_w, classes_rgba):
+def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshold=0.5):
     """ Average predictions from each model specified in model_paths """
+    pred_sum = None
     # then add predictions from the previous models to form an ensemble
-    cnn = load_model(model_paths[0], len(classes_rgba))
-    cnn.half()
-    preds = segment(cnn, image, bs, in_w, out_w)
-    return im_utils.seg_to_rgba(preds, classes_rgba)
+    for model_path in model_paths:
+        cnn = load_model(model_path, len(classes_rgba))
+        cnn.half()
+        preds = segment(cnn, image, bs, in_w, out_w)
+        if pred_sum is not None:
+            pred_sum += preds
+        else:
+            pred_sum = preds
+        # get flipped version too (test time augmentation)
+        flipped_im = np.fliplr(image)
+        flipped_pred = segment(cnn, flipped_im, bs, in_w, out_w)
+        pred_sum += np.flip(flipped_pred, 2) # return to normal
+
+    return im_utils.seg_to_rgba(pred_sum, classes_rgba)
 
 
 def segment(cnn, image, bs, in_w, out_w):
@@ -184,7 +195,7 @@ def segment(cnn, image, bs, in_w, out_w):
     width_diff = in_w - out_w
     pad_width = width_diff // 2
     padded_im = im_utils.pad(image, pad_width)
-    coords = im_utils.get_coords(padded_im, image,
+    coords = im_utils.get_coords(padded_im.shape, image.shape,
                                  in_tile_shape=(in_w, in_w, 3),
                                  out_tile_shape=(out_w, out_w))
     coord_idx = 0
@@ -210,11 +221,9 @@ def segment(cnn, image, bs, in_w, out_w):
                 tile = np.moveaxis(tile, -1, 0)
                 coord_idx += 1
                 tiles_to_process.append(tile)
-        
                 coords_to_process.append(coord)
 
         tiles_to_process = np.array(tiles_to_process)
-        print('tiles_to_process.shape', tiles_to_process.shape)
         tiles_for_gpu = torch.from_numpy(tiles_to_process)
         tiles_for_gpu.cuda()
         tiles_for_gpu = tiles_for_gpu.half()

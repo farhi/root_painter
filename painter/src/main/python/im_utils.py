@@ -26,6 +26,7 @@ from skimage.io import imread, imsave
 from skimage import img_as_ubyte
 from skimage.transform import resize
 from skimage.color import rgb2gray
+from PIL import Image
 
 def is_image(fname):
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff'}
@@ -73,13 +74,15 @@ def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
             background = resize(background,
                                 (background.shape[0]//2,
                                  background.shape[1]//2, 3))
-            annot = resize(annot, (annot.shape[0]//2, annot.shape[1]//2, 3))
-        annot_gray = rgb2gray(annot)
+            annot = resize(annot, (annot.shape[0]//2, annot.shape[1]//2, 4))
 
-        annot = img_as_ubyte(annot[:, :, :3])
         background = img_as_ubyte(background)
-        comp_right = np.copy(annot)
-        comp_right[annot_gray == 0] = background
+        comp_right = Image.fromarray(background)
+
+        # https://stackoverflow.com/a/55319979 # need to convert annot for pil
+        annot = (annot * 255).astype(np.uint8)
+        comp_right.paste(Image.fromarray(annot), (0, 0), Image.fromarray(annot[:, :, 3]))
+        comp_right = np.array(comp_right)
         # if width is more than 20% bigger than height then vstack
         if background.shape[1] > background.shape[0] * 1.2:
             comp = np.vstack((background, comp_right))
