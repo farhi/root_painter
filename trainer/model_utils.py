@@ -68,6 +68,78 @@ def get_prev_model(model_dir, num_classes):
     prev_model = load_model(prev_path, num_classes)
     return prev_model, prev_path
 
+def get_class_metrics(get_val_annots, get_seg, classes) -> list:
+    """
+    Segment the validation images and
+    return metrics for each of the classes.
+    """
+    class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class': c} for c in classes]
+    classes_rgb = [c[1][:3] for c in classes]
+
+    # for each image 
+    for fname, annot in get_val_annots():
+        assert annot.dtype == np.ubyte, str(annot.dtype)
+
+        # remove parts where annotation is not defined e.g alhpa=0
+        a_channel = annot[:, :, 3]
+        y_defined = (a_channel > 0).astype(np.int).reshape(-1)
+
+        # load sed, returns a channel for each class
+        seg = get_seg(fname)
+        
+        # for each class
+        for i, c in enumerate(classes):
+            class_rgb = c[1]
+            y_true = im_utils.get_class_map(annot, class_rgb)
+            y_pred = seg == i
+            assert y_true.shape == y_pred.shape, str(y_true.shape) + str(y_pred.shape)
+            
+            # only compute metrics on regions where annotation is defined.
+            y_true = y_true.reshape(-1)[y_defined > 0]
+            y_pred = y_pred.reshape(-1)[y_defined > 0]
+
+            class_metrics[i]['tp'] += np.sum(np.logical_and(y_pred == 1,
+                                                            y_true == 1))
+            class_metrics[i]['tn'] += np.sum(np.logical_and(y_pred == 0,
+                                                            y_true == 0))
+            class_metrics[i]['fp'] += np.sum(np.logical_and(y_pred == 1,
+                                                            y_true == 0))
+            class_metrics[i]['fn'] += np.sum(np.logical_and(y_pred == 0,
+                                                            y_true == 1))
+    for i, m in enumerate(class_metrics):
+        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'], m['class'])
+    return class_metrics
+
+
+def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
+
+    start = time.time()
+    fnames = ls(val_annot_dir)
+    fnames = [a for a in fnames if im_utils.is_photo(a)]
+    cnn.half()
+    
+    
+    def get_seg(fname):
+        image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
+        image_path = glob.glob(image_path_part + '.*')[0]
+        image = im_utils.load_image(image_path)
+        predicted = segment(cnn, image, bs, in_w, out_w)
+        
+        # Need to convert to predicted class.
+        predicted = np.argmax(predicted, 0)
+        return predicted
+
+    def get_val_annots():
+        for fname in fnames:
+            annot_path = os.path.join(val_annot_dir,
+                                      os.path.splitext(fname)[0] + '.png')
+            annot = imread(annot_path)
+            annot = np.array(annot)
+            yield [fname, annot]
+
+    print('Validation duration', time.time() - start)
+    return get_class_metrics(get_val_annots, get_seg, classes)
+
 
 
 def save_if_better(model_dir, cur_model, prev_model_path,
@@ -80,7 +152,7 @@ def save_if_better(model_dir, cur_model, prev_model_path,
         prev_loss = 0
     print('prev loss', str(round(prev_loss, 5)).ljust(7, '0'),
           'cur loss', str(round(cur_loss, 5)).ljust(7, '0'))
-    if cur_loss > prev_loss:
+    if cur_loss < prev_loss:
         prev_model_fname = os.path.basename(prev_model_path)
         prev_model_num = int(prev_model_fname.split('_')[0])
         model_num = prev_model_num + 1
@@ -93,13 +165,24 @@ def save_if_better(model_dir, cur_model, prev_model_path,
     return False
 
 
-def model_file_segment(model_paths, image, bs, in_w, out_w, classes_rgba):
+def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshold=0.5):
     """ Average predictions from each model specified in model_paths """
+    pred_sum = None
     # then add predictions from the previous models to form an ensemble
-    cnn = load_model(model_paths[0], len(classes_rgba))
-    cnn.half()
-    preds = segment(cnn, image, bs, in_w, out_w)
-    return im_utils.seg_to_rgba(preds, classes_rgba)
+    for model_path in model_paths:
+        cnn = load_model(model_path, len(classes_rgba))
+        cnn.half()
+        preds = segment(cnn, image, bs, in_w, out_w)
+        if pred_sum is not None:
+            pred_sum += preds
+        else:
+            pred_sum = preds
+        # get flipped version too (test time augmentation)
+        flipped_im = np.fliplr(image)
+        flipped_pred = segment(cnn, flipped_im, bs, in_w, out_w)
+        pred_sum += np.flip(flipped_pred, 2) # return to normal
+
+    return im_utils.seg_to_rgba(pred_sum, classes_rgba)
 
 
 def segment(cnn, image, bs, in_w, out_w):
@@ -112,7 +195,7 @@ def segment(cnn, image, bs, in_w, out_w):
     width_diff = in_w - out_w
     pad_width = width_diff // 2
     padded_im = im_utils.pad(image, pad_width)
-    coords = im_utils.get_coords(padded_im, image,
+    coords = im_utils.get_coords(padded_im.shape, image.shape,
                                  in_tile_shape=(in_w, in_w, 3),
                                  out_tile_shape=(out_w, out_w))
     coord_idx = 0
@@ -138,11 +221,9 @@ def segment(cnn, image, bs, in_w, out_w):
                 tile = np.moveaxis(tile, -1, 0)
                 coord_idx += 1
                 tiles_to_process.append(tile)
-        
                 coords_to_process.append(coord)
 
         tiles_to_process = np.array(tiles_to_process)
-        print('tiles_to_process.shape', tiles_to_process.shape)
         tiles_for_gpu = torch.from_numpy(tiles_to_process)
         tiles_for_gpu.cuda()
         tiles_for_gpu = tiles_for_gpu.half()
