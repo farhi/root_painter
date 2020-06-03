@@ -32,17 +32,21 @@ def dice_loss(class_preds, class_labels):
 
 def multiclass_loss(predictions, defined, labels):
     """ mix of dice and cross entropy """
-    classes = torch.unique(labels).long()
     # remove any of the predictions for which we don't have ground truth
     # Set outputs to 0 where annotation undefined so that
-    # The network can predict whatever it wants without any penalty.
+    # The network can predict whatever it wants without it influencing the penalty
     for c in range(predictions.shape[1]):
         predictions[:, c] *= defined
+
     softmaxed = softmax(predictions, 1)
+    # exclude bg from dice to maintain equivalence with the previous binary loss.
+    fg_classes = [c for c in torch.unique(labels).long() if c > 0]
     dice_loss_sum = 0
-    for c in classes:
-        class_preds = softmaxed[:, c]
-        class_labels = (labels == c).float()
-        dice_loss_sum += dice_loss(class_preds, class_labels)
-    dice_loss_sum /= len(classes)
-    return dice_loss_sum + (0.3 * cross_entropy(predictions, labels))
+    if len(fg_classes):
+        for c in fg_classes:
+            class_preds = softmaxed[:, c]
+            class_labels = (labels == c).float()
+            dice_loss_sum += dice_loss(class_preds, class_labels)
+        dice_loss_sum /= len(fg_classes)
+    cx_loss = (0.3 * cross_entropy(predictions, labels))
+    return dice_loss_sum + cx_loss
