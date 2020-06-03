@@ -158,6 +158,7 @@ class Trainer():
     def start_training(self, config):
         if not self.training:
             self.train_config = config
+            self.val_tile_refs = [] # dont want to cache these between projects
             self.epochs_without_progress = 0
             self.msg_dir = self.train_config['message_dir']
             model_dir = self.train_config['model_dir']
@@ -191,7 +192,7 @@ class Trainer():
         """ write a message for the user (client) """
         Path(os.path.join(self.msg_dir, message)).touch()
 
-    def one_epoch(self, model, mode='train'):
+    def one_epoch(self, model, mode='train', val_tile_refs=None):
 
         # mode is train or val
         annot_dir = self.train_config[f'{mode}_annot_dir']
@@ -203,14 +204,9 @@ class Trainer():
             self.write_message('Training started')
             self.log('Starting Training')
 
-        val_tile_refs = None # only use these for validation.
         dataset = None
         
         if mode == 'val':
-            self.val_tile_refs = im_utils.get_val_tile_refs(annot_dir,
-                                                            copy.deepcopy(self.val_tile_refs),
-                                                            self.in_w, self.out_w)
-            print('val tile refs', len(self.val_tile_refs))
             dataset = RPDataset(self.train_config['val_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
@@ -221,6 +217,7 @@ class Trainer():
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
                                 self.train_config['classes'], 'train')
+
         else:
             raise Exception(f"Invalid mode: {mode}")
         
@@ -245,6 +242,7 @@ class Trainer():
             im_tiles = im_tiles.cuda()
             target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
+
             self.optimizer.zero_grad()
             outputs = model(im_tiles)
             loss = criterion(outputs, defined_tiles, target_tiles)
@@ -275,8 +273,11 @@ class Trainer():
         model_dir = self.train_config['model_dir']
         prev_model, prev_path = model_utils.get_prev_model(model_dir,
                                                            len(self.train_config['classes']))
-        cur_loss = self.one_epoch(copy.deepcopy(self.model), 'val')
-        prev_loss = self.one_epoch(prev_model, 'val')
+        self.val_tile_refs = im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
+                                                        copy.deepcopy(self.val_tile_refs),
+                                                        self.in_w, self.out_w)
+        cur_loss = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
+        prev_loss = self.one_epoch(prev_model, 'val', self.val_tile_refs)
         was_saved = save_if_better(model_dir, self.model, prev_path,
                                    cur_loss, prev_loss)
         if was_saved:
