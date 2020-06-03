@@ -64,7 +64,7 @@ class Trainer():
         total_mem = 0
         for i in range(torch.cuda.device_count()):
             total_mem += torch.cuda.get_device_properties(i).total_memory
-        self.bs = total_mem // mem_per_item
+        self.bs = 8 # total_mem // mem_per_item
         print('Batch size', self.bs)
         self.optimizer = None
         self.val_tile_refs = []
@@ -193,12 +193,6 @@ class Trainer():
 
     def one_epoch(self, model, mode='train'):
 
-        m1 = copy.deepcopy(model)
-
-        l1 = list(m1.state_dict().values())
-        l2 = list(model.state_dict().values())
-        for a, b in zip(l1, l2):
-            assert torch.sum(a) == torch.sum(b)
         # mode is train or val
         annot_dir = self.train_config[f'{mode}_annot_dir']
         if not [is_photo(a) for a in ls(annot_dir)]:
@@ -246,11 +240,6 @@ class Trainer():
         for step, (im_tiles,
                    target_tiles,
                    defined_tiles) in enumerate(loader):
-            if mode == 'val':
-                l1 = list(m1.state_dict().values())
-                l2 = list(model.state_dict().values())
-                for a, b in zip(l1, l2):
-                    assert torch.sum(a) == torch.sum(b)
 
             self.check_for_instructions()
             im_tiles = im_tiles.cuda()
@@ -261,7 +250,6 @@ class Trainer():
             loss = criterion(outputs, defined_tiles, target_tiles)
 
             if mode == 'train':            
-                print('update step')
                 loss.backward()
                 self.optimizer.step()
 
