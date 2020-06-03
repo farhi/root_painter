@@ -212,12 +212,14 @@ class Trainer():
                                 self.in_w, self.out_w,
                                 self.train_config['classes'],
                                 'val', self.val_tile_refs)
+            torch.set_grad_enabled(False)
         elif mode == 'train':
             dataset = RPDataset(self.train_config['train_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
                                 self.train_config['classes'], 'train')
 
+            torch.set_grad_enabled(True)
         else:
             raise Exception(f"Invalid mode: {mode}")
         
@@ -242,7 +244,6 @@ class Trainer():
             im_tiles = im_tiles.cuda()
             target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
-
             self.optimizer.zero_grad()
             outputs = model(im_tiles)
             loss = criterion(outputs, defined_tiles, target_tiles)
@@ -276,8 +277,12 @@ class Trainer():
         self.val_tile_refs = im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
                                                         copy.deepcopy(self.val_tile_refs),
                                                         self.in_w, self.out_w)
+
         cur_loss = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
+        start = time.time()
         prev_loss = self.one_epoch(prev_model, 'val', self.val_tile_refs)
+        print('prev loss duration', time.time() - start)
+
         was_saved = save_if_better(model_dir, self.model, prev_path,
                                    cur_loss, prev_loss)
         if was_saved:
