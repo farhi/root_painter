@@ -52,8 +52,6 @@ def test_two_class_dice_perfect_score():
 
     classes = [[str(i), c] for i,c in enumerate(classes_rgb)]
     all_metrics = get_class_metrics(get_val_annots, get_seg, classes)
-    for m in all_metrics:
-        print(m)
     assert len(all_metrics) == 2
     assert np.isclose(all_metrics[0]['dice'], 1.0)
     # this doesn't actually work. no predictions for this class so dice is nan
@@ -196,8 +194,6 @@ def test_four_class_dice_half_score():
     all_metrics = get_class_metrics(get_val_annots, get_seg, classes)
 
     assert len(all_metrics) == 4
-    for m in all_metrics:
-        print(m)
     assert np.isclose(all_metrics[0]['dice'], 0.5)
     assert np.isclose(all_metrics[1]['dice'], 0.5)
     assert np.isclose(all_metrics[2]['dice'], 0.5)

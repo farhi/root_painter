@@ -21,4 +21,11 @@ import pathlib
 
 test_dir = pathlib.Path.cwd() / 'tests'
 os.chdir(test_dir)
+
+# example showing how to run an individual test
+# import sys
+# sys.path.insert(1, 'tests')
+# from test_segment import test_CNN_segment_classes_3D
+# test_CNN_segment_classes_3D()
+
 pytest.main()
