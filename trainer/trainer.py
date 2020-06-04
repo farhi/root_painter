@@ -37,7 +37,7 @@ from loss import multiclass_loss as criterion
 
 from datasets import RPDataset
 from metrics import get_metrics, get_metrics_str, get_metric_csv_row
-from model_utils import ensemble_segment
+from model_utils import ensemble_segment, ensemble_segment_3d
 from model_utils import create_first_model_with_random_weights
 import model_utils
 from model_utils import save_if_better
@@ -58,8 +58,10 @@ class Trainer():
         self.train_config = None
         self.model = None
         self.first_loop = True
+    
         self.in_w = 572
         self.out_w = 500
+
         mem_per_item = 3800000000
         total_mem = 0
         for i in range(torch.cuda.device_count()):
@@ -357,8 +359,11 @@ class Trainer():
                      model_paths, classes_rgba, sync_save):
         fpath = os.path.join(in_dir, fname)
 
-        # Segmentations are always saved as PNG.
-        out_path = os.path.join(seg_dir, os.path.splitext(fname)[0] + '.png')
+        # Segmentations are always saved as PNG for 2d or nifty for 3d
+        if fname.endswith('.nii.gz'): 
+            out_path = os.path.join(seg_dir, fname)
+        else:
+            out_path = os.path.join(seg_dir, os.path.splitext(fname)[0] + '.png')
         if os.path.isfile(out_path):
             print('Skip because found existing segmentation file')
             return
@@ -366,19 +371,32 @@ class Trainer():
             print('Cannot segment as missing file', fpath)
         else:
             try:
-                im = load_image(fpath)
+                im, dims = load_image(fpath)
             except Exception as e:
                 # Could be temporary issues reading the image.
                 # its ok just skip it.
                 print('Exception loading', fpath, e)
                 return
+            
             # if input is smaller than this, behaviour is unpredictable.
-            if im.shape[0] < self.in_w or im.shape[1] < self.in_w:
-                raise Exception(f"image {fname} too small to segment. Width "
-                                f" and height must be at least {self.in_w}")
+            if dims == 2:
+                if im.shape[0] < self.in_w or im.shape[1] < self.in_w:
+                    raise Exception(f"image {fname} too small to segment. Width "
+                                    f" and height must be at least {self.in_w}")
             seg_start = time.time()
-            segmented_rgba = ensemble_segment(model_paths, im, self.bs,
-                                                self.in_w, self.out_w, classes_rgba)
+            if dims == 2:
+                # rgba
+                segmented = ensemble_segment(model_paths, im, self.bs,
+                                             self.in_w, self.out_w, classes_rgba)
+            elif dims == 3:
+                in_d = 64
+                out_d = 18
+                in_w = 312
+                out_w = 274
+                bs = 2
+                segmented = ensemble_segment_3d(model_paths, im, bs,
+                                                in_w, out_w, in_d,
+                                                out_d, classes_rgba)
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
@@ -387,10 +405,10 @@ class Trainer():
                 if sync_save:
                     # other wise do sync because we don't want to delete the segment
                     # instruction too early.
-                    save_then_move(out_path, segmented_rgba)
+                    save_then_move(out_path, segmented, dims)
                 else:
                     # TODO find a cleaner way to do this.
                     # if more than one file then optimize speed over stability.
                     x = threading.Thread(target=save_then_move,
-                                         args=(out_path, segmented_rgba))
+                                         args=(out_path, segmented, dims))
                     x.start()

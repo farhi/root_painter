@@ -104,7 +104,7 @@ def test_2D_segment_instruction():
     
     # create a model file (random weights is fine)
     # and save the model to the models folder.
-    create_first_model_with_random_weights(model_dir, num_classes=3)
+    create_first_model_with_random_weights(model_dir, num_classes=3, dimensions=2)
 
     # create an example input image using numpy and save to the datsets folder
     example_image = np.random.rand(1200, 600, 3)

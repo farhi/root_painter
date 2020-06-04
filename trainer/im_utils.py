@@ -28,6 +28,7 @@ from skimage import color
 from skimage import img_as_ubyte
 from skimage.exposure import rescale_intensity
 from skimage.io import imread, imsave
+import nibabel as nib
 from file_utils import ls
 import im_utils
 
@@ -152,11 +153,9 @@ def pad(image, width: int, mode='reflect', constant_values=0):
 
 def pad_3d(image, width, depth, mode='reflect', constant_values=0):
     pad_shape = [(depth, depth), (width, width), (width, width)]
-    print('image shape = ', image.shape)
     if len(image.shape) == 4:
         # don't pad channels
         pad_shape = [(0, 0)] + pad_shape # channels first for 3D
-    print('pad shape =', pad_shape)
     if mode == 'reflect':
         return skim_util.pad(image, pad_shape, mode)
     return skim_util.pad(image, pad_shape, mode=mode,
@@ -289,10 +288,10 @@ def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     return tile_coords
 
 def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
-
-    depth_count = ceil(im_shape[0] / out_tile_shape[0])
-    vertical_count = ceil(im_shape[1] / out_tile_shape[1])
-    horizontal_count = ceil(im_shape[2] / out_tile_shape[2])
+    assert im_shape[0] == 1 # channel dimension first for 3D
+    depth_count = ceil(im_shape[1] / out_tile_shape[0])
+    vertical_count = ceil(im_shape[2] / out_tile_shape[1])
+    horizontal_count = ceil(im_shape[3] / out_tile_shape[2])
 
     # first split the image based on the tiles that fit
     z_coords = [d*out_tile_shape[0] for d in range(depth_count-1)] # z is depth
@@ -303,9 +302,9 @@ def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     # (Might go outside the image)
     # so get the tile positiion by subtracting tile size from the
     # edge of the image.
-    lower_z = padded_im_shape[0] - in_tile_shape[0]
-    bottom_y = padded_im_shape[1] - in_tile_shape[1]
-    right_x = padded_im_shape[2] - in_tile_shape[2]
+    lower_z = padded_im_shape[1] - in_tile_shape[0]
+    bottom_y = padded_im_shape[2] - in_tile_shape[1]
+    right_x = padded_im_shape[3] - in_tile_shape[2]
 
     z_coords.append(lower_z)
     y_coords.append(bottom_y)
@@ -333,7 +332,7 @@ def seg_to_rgba(seg, classes_rgba):
     return rgba_output
 
 
-def save_then_move(out_path, seg_alpha):
+def save_then_move(out_path, seg, dims):
     """ need to save in a temp folder first and
         then move to the segmentation folder after saving
         this is because scripts are monitoring the segmentation folder
@@ -344,22 +343,34 @@ def save_then_move(out_path, seg_alpha):
     """
     fname = os.path.basename(out_path)
     temp_path = os.path.join('/tmp', fname)
-    imsave(temp_path, seg_alpha)
+    if dims == 2:
+        imsave(temp_path, seg)
+    else:
+        img = nib.Nifti1Image(seg, np.eye(4))
+        img.to_filename(temp_path)
     shutil.move(temp_path, out_path)
 
 
-def load_image(photo_path):
-    photo = imread(photo_path)
-    # sometimes photo is a list where first element is the photo
-    if len(photo.shape) == 1:
-        photo = photo[0]
+def load_image(image_path):
+    dims = None
+    if image_path.endswith('.nii.gz'):
+        image = nib.load(image_path)
+        image = np.array(image.dataobj)
+        image = np.expand_dims(image, axis=0)
+        image = np.expand_dims(image, axis=0)
+        dims = 3
+    else:
+        dims = 2
+        image = imread(image_path)
+    # sometimes image is a list where first element is the image
+    if len(image.shape) == 1:
+        image = image[0]
     # if 4 channels then convert to rgb
     # (presuming 4th channel is alpha channel)
-    if len(photo.shape) > 2 and photo.shape[2] == 4:
-        photo = color.rgba2rgb(photo)
-
+    if len(image.shape) > 2 and image.shape[2] == 4:
+        image = color.rgba2rgb(image)
     # if image is black and white then change it to rgb
     # TODO: train directly on B/W instead of doing this conversion.
-    if len(photo.shape) == 2:
-        photo = color.gray2rgb(photo)
-    return photo
+    if len(image.shape) == 2:
+        image = color.gray2rgb(image)
+    return image, dims

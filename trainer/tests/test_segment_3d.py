@@ -63,16 +63,25 @@ def test_CNN_segment_classes_3D_9_classes():
     assert output.shape[1] == num_classes
 
 
+@pytest.mark.slow
 def test_segment_large_3D_image(monkeypatch):
     """ Test that the segmentation method reconstructs the output properly """
 
     def cnn(tile):
+        assert len(tile.shape) == 5
+        assert tile.shape[0] == 1
+        assert tile.shape[1] == 1
+        assert tile.shape[2] == 64, str(tile.shape)
+        assert tile.shape[3] == 312
+        assert tile.shape[4] == 312
+
         # identify function as we are only testing the reconstruction methods
         # test returning a smaller part of the image as would happen in reality.
         # take the central 18 slices.
         d_crop = (64 - 18) // 2
         w_crop = (312 - 274) // 2
-        central_part = tile[:, d_crop:-d_crop, w_crop:-w_crop, w_crop:-w_crop]
+
+        central_part = tile[:, :, d_crop:-d_crop, w_crop:-w_crop, w_crop:-w_crop]
         return central_part.unsqueeze(1) # add a (single) classes dimension
 
     def mock_normalize_tile(tile):
@@ -83,6 +92,7 @@ def test_segment_large_3D_image(monkeypatch):
     channels = 1 
     depth = 96
     test_input = np.random.rand(channels, depth, 512, 512) # depth, height, width
+    test_input = np.expand_dims(test_input, axis=0) # batch dimension
     in_w = 312
     out_w = 274
     in_d = 64
@@ -95,7 +105,7 @@ def test_segment_large_3D_image(monkeypatch):
     assert np.allclose(seg, test_input, atol=0.01)
 
 
-@pytest.mark.slow
+
 def test_3D_segment_instruction():
     """
     A high level integration test for the 
@@ -123,10 +133,10 @@ def test_3D_segment_instruction():
     create_first_model_with_random_weights(model_dir, num_classes=3, dimensions=3)
 
     # create an example input image using numpy and save to the datsets folder
-    example_image = np.random.rand(512, 512, 96, dtype=np.int16)
-    img = nib.Nfti1Image(example_image, np.eye(4))
-    im_path = os.path.join(dataset_dir, 'example_image.nii.gz')
-    img.to_filename(img_path
+    example_image = np.random.rand(96, 512, 512)
+    img = nib.Nifti1Image(example_image, np.eye(4))
+    img_path = os.path.join(dataset_dir, 'example_image.nii.gz')
+    img.to_filename(img_path)
 
     # create an instruction as json.
     content = {
@@ -153,20 +163,20 @@ def test_3D_segment_instruction():
     print('checking')
 
     # assert that the segmentation file has been created
-    seg_path = os.path.join(seg_dir, 'example_image.png')
+    seg_path = os.path.join(seg_dir, 'example_image.nii.gz')
     assert os.path.isfile(seg_path)
 
     # assert that it it is non-zero (random weights don't do this) 
-    seg = imread(seg_path)
+    image = nib.load(seg_path)
+    seg = np.array(image.dataobj)
+
     assert np.sum(seg) > 0
 
     # assert that it has the same shape as the input image
-    assert seg.shape == (example_image.shape[0], example_image.shape[1], 4)
+    assert seg.shape[0] == 3 # for each class
+    assert seg[0].shape == example_image.shape
     # assert that the segment instruction has been deleted.
     assert not os.path.isfile(fpath) 
 
     # clean up the the scrap folder that was created in /tmp
     shutil.rmtree(sync_dir) 
-
-
-

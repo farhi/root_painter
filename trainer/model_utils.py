@@ -28,6 +28,7 @@ from skimage.io import imread
 from skimage import img_as_float32
 import im_utils
 from unet import UNetGNRes
+from unet3d import UNet3D
 from metrics import get_metrics
 from file_utils import ls
 
@@ -39,8 +40,11 @@ def get_latest_model_paths(model_dir, k):
     return fpaths
 
 
-def load_model(model_path, num_classes):
-    model = UNetGNRes(out_channels=num_classes)
+def load_model(model_path, num_classes, dims):
+    if dims == 2:
+        model = UNetGNRes(out_channels=num_classes)
+    else:
+        model = UNet3D(im_channels=1, out_channels=num_classes)
     try:
         model.load_state_dict(torch.load(model_path))
         model = torch.nn.DataParallel(model)
@@ -50,12 +54,18 @@ def load_model(model_path, num_classes):
     model.cuda()
     return model
 
-def create_first_model_with_random_weights(model_dir, num_classes):
+def create_first_model_with_random_weights(model_dir, num_classes, dimensions):
     # used when no model was specified on project creation.
     model_num = 1
     model_name = str(model_num).zfill(6)
     model_name += '_' + str(int(round(time.time()))) + '.pkl'
-    model = UNetGNRes(out_channels=num_classes)
+    if dimensions == 2:
+        model = UNetGNRes(out_channels=num_classes)
+    elif dimensions == 3:
+        model = UNet3D(im_channels=1, out_channels=num_classes)
+    else:
+        raise Exception(f"Unhandled dimensions {dimensions}")
+
     model = torch.nn.DataParallel(model)
     model_path = os.path.join(model_dir, model_name)
     torch.save(model.state_dict(), model_path)
@@ -63,9 +73,9 @@ def create_first_model_with_random_weights(model_dir, num_classes):
     return model
 
 
-def get_prev_model(model_dir, num_classes):
+def get_prev_model(model_dir, num_classes, dims):
     prev_path = get_latest_model_paths(model_dir, k=1)[0]
-    prev_model = load_model(prev_path, num_classes)
+    prev_model = load_model(prev_path, num_classes, dims)
     return prev_model, prev_path
 
 def get_class_metrics(get_val_annots, get_seg, classes) -> list:
@@ -170,7 +180,7 @@ def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshol
     pred_sum = None
     # then add predictions from the previous models to form an ensemble
     for model_path in model_paths:
-        cnn = load_model(model_path, len(classes_rgba))
+        cnn = load_model(model_path, len(classes_rgba), dims=2)
         cnn.half()
         preds = segment(cnn, image, bs, in_w, out_w)
         if pred_sum is not None:
@@ -185,7 +195,32 @@ def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshol
     return im_utils.seg_to_rgba(pred_sum, classes_rgba)
 
 
+def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
+                        out_d, classes_rgba, threshold=0.5):
+    """ Average predictions from each model specified in model_paths """
+    pred_sum = None
+    pred_count = 0
+    # then add predictions from the previous models to form an ensemble
+    for model_path in model_paths:
+        cnn = load_model(model_path, len(classes_rgba), dims=3)
+        cnn.half()
+        preds = segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d)
+        if pred_sum is not None:
+            pred_sum += preds
+            pred_count += 1
+        else:
+            pred_sum = preds
+            pred_count = 1
+        # get flipped version too (test time augmentation)
+        flipped_im = np.fliplr(image)
+        flipped_pred = segment_3d(cnn, flipped_im, bs, in_w, out_w, in_d, out_d)
+        pred_sum += np.flip(flipped_pred, 2) # return to normal
+        pred_count += 1
+    return pred_sum / pred_count
+
+
 def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
+
     # image shape = (channels, depth, height, withd)
     # in_w is both w and h
     # out_w is both w and h
@@ -193,12 +228,16 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
     # Return prediction for each pixel in the image
     # The cnn will give a the output as channels where
     # each channel corresponds to a specific class 'probability'
-    
-    image = image[0] # we only work with 1 channel images for now. 
+    # don't need channel dimension
     # make sure the width, height and depth is at least as big as the tile.
-    assert image.shape[0] >= in_d, str(image.shape[0])
-    assert image.shape[1] >= in_w, str(image.shape[1])
-    assert image.shape[2] >= in_w, str(image.shape[2])
+    assert len(image.shape) == 5, str(image.shape)
+    assert image.shape[0] == 1, str(image.shape[0])
+    assert image.shape[1] == 1, str(image.shape[1])
+    assert image.shape[2] >= in_d, str(image.shape[2])
+    assert image.shape[3] >= in_w, str(image.shape[3])
+    assert image.shape[4] >= in_w, str(image.shape[4])
+
+    image = image[0]
 
     width_diff = in_w - out_w
     pad_width = width_diff // 2
@@ -225,16 +264,17 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
             if coord_idx < len(coords):
                 coord = coords[coord_idx]
                 x, y, z = coord
-                tile = padded_im[z:z+in_d,
+                tile = padded_im[:,
+                                 z:z+in_d,
                                  y:y+in_w,
                                  x:x+in_w]
-                assert tile.shape[0] == in_d
-                assert tile.shape[1] == in_w
-                assert tile.shape[2] == in_w
+                assert tile.shape[1] == in_d, str(tile.shape)
+                assert tile.shape[2] == in_w, str(tile.shape)
+                assert tile.shape[3] == in_w, str(tile.shape)
                 tile = img_as_float32(tile)
                 tile = im_utils.normalize_tile(tile)
                 coord_idx += 1
-                tiles_to_process.append(tile)
+                tiles_to_process.append(tile) # need channel dimension
                 coords_to_process.append(coord)
 
         tiles_to_process = np.array(tiles_to_process)
@@ -242,13 +282,12 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
         tiles_for_gpu.cuda()
         tiles_for_gpu = tiles_for_gpu.half()
         tiles_predictions = cnn(tiles_for_gpu)
-
         pred_np = tiles_predictions.data.cpu().numpy()
 
         num_classes = pred_np.shape[1] # how many output classes
 
         if seg is None:
-            seg_shape = [num_classes] + list(image.shape[:3])
+            seg_shape = [num_classes] + list(image.shape[1:])
             seg = np.zeros(seg_shape)
         out_tiles = pred_np.reshape((len(tiles_for_gpu), num_classes, out_d, out_w, out_w))
         
