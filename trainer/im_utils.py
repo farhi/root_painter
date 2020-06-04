@@ -150,6 +150,19 @@ def pad(image, width: int, mode='reflect', constant_values=0):
                          constant_values=constant_values)
 
 
+def pad_3d(image, width, depth, mode='reflect', constant_values=0):
+    pad_shape = [(depth, depth), (width, width), (width, width)]
+    print('image shape = ', image.shape)
+    if len(image.shape) == 4:
+        # don't pad channels
+        pad_shape = [(0, 0)] + pad_shape # channels first for 3D
+    print('pad shape =', pad_shape)
+    if mode == 'reflect':
+        return skim_util.pad(image, pad_shape, mode)
+    return skim_util.pad(image, pad_shape, mode=mode,
+                         constant_values=constant_values)
+
+
 def add_salt_pepper(image, intensity):
     image = np.array(image)
     white = [1, 1, 1]
@@ -273,6 +286,33 @@ def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
 
     # because its a rectangle get all combinations of x and y
     tile_coords = [(x, y) for x in x_coords for y in y_coords]
+    return tile_coords
+
+def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
+
+    depth_count = ceil(im_shape[0] / out_tile_shape[0])
+    vertical_count = ceil(im_shape[1] / out_tile_shape[1])
+    horizontal_count = ceil(im_shape[2] / out_tile_shape[2])
+
+    # first split the image based on the tiles that fit
+    z_coords = [d*out_tile_shape[0] for d in range(depth_count-1)] # z is depth
+    y_coords = [v*out_tile_shape[1] for v in range(vertical_count-1)]
+    x_coords = [h*out_tile_shape[2] for h in range(horizontal_count-1)]
+
+    # The last row and column of tiles might not fit
+    # (Might go outside the image)
+    # so get the tile positiion by subtracting tile size from the
+    # edge of the image.
+    lower_z = padded_im_shape[0] - in_tile_shape[0]
+    bottom_y = padded_im_shape[1] - in_tile_shape[1]
+    right_x = padded_im_shape[2] - in_tile_shape[2]
+
+    z_coords.append(lower_z)
+    y_coords.append(bottom_y)
+    x_coords.append(right_x)
+
+    # because its a cuboid get all combinations of x, y and z
+    tile_coords = [(x, y, z) for x in x_coords for y in y_coords for z in z_coords]
     return tile_coords
 
 
