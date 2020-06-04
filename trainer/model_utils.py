@@ -185,6 +185,80 @@ def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshol
     return im_utils.seg_to_rgba(pred_sum, classes_rgba)
 
 
+def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
+    # image shape = (channels, depth, height, withd)
+    # in_w is both w and h
+    # out_w is both w and h
+
+    # Return prediction for each pixel in the image
+    # The cnn will give a the output as channels where
+    # each channel corresponds to a specific class 'probability'
+    
+    image = image[0] # we only work with 1 channel images for now. 
+    # make sure the width, height and depth is at least as big as the tile.
+    assert image.shape[0] >= in_d, str(image.shape[0])
+    assert image.shape[1] >= in_w, str(image.shape[1])
+    assert image.shape[2] >= in_w, str(image.shape[2])
+
+    width_diff = in_w - out_w
+    pad_width = width_diff // 2
+
+    depth_diff = in_d - out_d
+    pad_depth = depth_diff // 2
+    
+    
+    padded_im = im_utils.pad_3d(image, pad_width, pad_depth)
+    coords = im_utils.get_coords_3d(padded_im.shape, image.shape,
+                                     in_tile_shape=(in_d, in_w, in_w),
+                                     out_tile_shape=(out_d, out_w, out_w))
+    coord_idx = 0
+    batches = []
+
+    # segmentation for the full image
+    # assign once we get number of classes from the cnn output shape.
+    seg = None
+
+    while coord_idx < len(coords):
+        tiles_to_process = []
+        coords_to_process = []
+        for _ in range(bs):
+            if coord_idx < len(coords):
+                coord = coords[coord_idx]
+                x, y, z = coord
+                tile = padded_im[z:z+in_d,
+                                 y:y+in_w,
+                                 x:x+in_w]
+                assert tile.shape[0] == in_d
+                assert tile.shape[1] == in_w
+                assert tile.shape[2] == in_w
+                tile = img_as_float32(tile)
+                tile = im_utils.normalize_tile(tile)
+                coord_idx += 1
+                tiles_to_process.append(tile)
+                coords_to_process.append(coord)
+
+        tiles_to_process = np.array(tiles_to_process)
+        tiles_for_gpu = torch.from_numpy(tiles_to_process)
+        tiles_for_gpu.cuda()
+        tiles_for_gpu = tiles_for_gpu.half()
+        tiles_predictions = cnn(tiles_for_gpu)
+
+        pred_np = tiles_predictions.data.cpu().numpy()
+
+        num_classes = pred_np.shape[1] # how many output classes
+
+        if seg is None:
+            seg_shape = [num_classes] + list(image.shape[:3])
+            seg = np.zeros(seg_shape)
+        out_tiles = pred_np.reshape((len(tiles_for_gpu), num_classes, out_d, out_w, out_w))
+        
+        # add the predictions from the gpu to the output segmentation
+        # use their correspond coordinates
+        for tile, (x, y, z) in zip(out_tiles, coords_to_process):
+            # tile.shape[0] is the number of classes.
+            seg[:, z:z+tile.shape[1], y:y+tile.shape[2], x:x+tile.shape[3]] = tile
+    return seg
+
 def segment(cnn, image, bs, in_w, out_w):
     # Return prediction for each pixel in the image
     # The cnn will give a the output as channels where
@@ -200,7 +274,7 @@ def segment(cnn, image, bs, in_w, out_w):
                                  out_tile_shape=(out_w, out_w))
     coord_idx = 0
     batches = []
-    
+
     # segmentation for the full image
     # assign once we get number of classes from the cnn output shape.
     seg = None
