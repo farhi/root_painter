@@ -29,7 +29,6 @@ from model_utils import segment, create_first_model_with_random_weights
 import im_utils
 from trainer import Trainer
 
-
 def test_CNN_segment_classes():
     """
     test CNN returns data in the correct shape for a single tile.
@@ -50,37 +49,6 @@ def test_CNN_segment_classes():
     output = cnn(test_input)
     print('2d cnn time 31 class', time.time() - start)
 
-    assert output.shape[1] == num_classes
-
-
-def test_CNN_segment_classes_3D_3_classes():
-    """
-    test CNN returns data in the correct shape for a single cube.
-    Using random weights this time so the output is not checked.
-
-    The number of output channels should correspond to the classes
-    """
-    start = time.time()
-    num_classes = 3
-    cnn = UNet3D(im_channels=1, out_channels=num_classes).cuda()
-    test_input = torch.zeros((1, 1, 64, 312, 312)).cuda()
-    output = cnn(test_input)
-    print('3D unet 3 classes output time = ', time.time() - start, 'output shape', output.shape)
-    assert output.shape[1] == num_classes
-
-def test_CNN_segment_classes_3D_9_classes():
-    """
-    test CNN returns data in the correct shape for a single cube.
-    Using random weights this time so the output is not checked.
-
-    The number of output channels should correspond to the classes
-    """
-    num_classes = 9
-    cnn = UNet3D(im_channels=1, out_channels=num_classes).cuda()
-    test_input = torch.zeros((1, 1, 64, 312, 312)).cuda()
-    start = time.time()
-    output = cnn(test_input)
-    print('3D unet 9 classes output time = ', time.time() - start, 'output shape', output.shape)
     assert output.shape[1] == num_classes
 
 
@@ -182,3 +150,5 @@ def test_2D_segment_instruction():
 
     # clean up the the scrap folder that was created in /tmp
     shutil.rmtree(sync_dir) 
+
+
