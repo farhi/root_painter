@@ -19,13 +19,16 @@ import os
 import pytest
 import pathlib
 
-test_dir = pathlib.Path.cwd() / 'tests'
-os.chdir(test_dir)
+run_single = False
 
-# example showing how to run an individual test
-# import sys
-# sys.path.insert(1, 'tests')
-# from test_segment import test_CNN_segment_classes_3D
-# test_CNN_segment_classes_3D()
-
-pytest.main()
+if run_single:
+    import sys
+    sys.path.insert(1, 'tests')
+    from test_train_3d import test_train_predict_all_zero
+    test_train_predict_all_zero()
+    #from test_segment_3d import test_3D_segment_instruction
+    #test_3D_segment_instruction()
+else:
+    test_dir = pathlib.Path.cwd() / 'tests'
+    os.chdir(test_dir)
+    pytest.main()
