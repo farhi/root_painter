@@ -105,7 +105,7 @@ def test_segment_large_3D_image(monkeypatch):
     assert np.allclose(seg, test_input, atol=0.01)
 
 
-
+@pytest.mark.slow
 def test_3D_segment_instruction():
     """
     A high level integration test for the 
