@@ -33,11 +33,11 @@ from file_utils import ls
 import im_utils
 
 
-def is_photo(fname):
+def is_image(fname):
     """ extensions that have been tested with so far """
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff'}
     fname_ext = os.path.splitext(fname)[1].lower()
-    return fname_ext in extensions
+    return fname_ext in extensions or fname.endswith('.nii.gz')
 
 def normalize_tile(tile):
     if np.min(tile) < np.max(tile):
@@ -58,7 +58,7 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
         try:
             # This might take ages, profile and optimize
             fnames = ls(train_annot_dir)
-            fnames = [a for a in fnames if is_photo(a)]
+            fnames = [a for a in fnames if is_image(a)]
             fname = random.sample(fnames, 1)[0]
             annot_path = os.path.join(train_annot_dir, fname)
             image_path_part = os.path.join(dataset_dir,
