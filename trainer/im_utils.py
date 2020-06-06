@@ -350,6 +350,11 @@ def save_then_move(out_path, seg, dims):
     shutil.move(temp_path, out_path)
 
 
+def save_nifty(image_path, im):
+    img = nib.Nifti1Image(im, np.eye(4))
+    img.to_filename(image_path)
+
+
 def load_image(image_path):
     dims = None
     if image_path.endswith('.nii.gz'):
