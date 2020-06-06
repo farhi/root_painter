@@ -42,7 +42,7 @@ from model_utils import create_first_model_with_random_weights
 import model_utils
 from model_utils import save_if_better
 
-from im_utils import is_photo, load_image, save_then_move, load_train_image_and_annot
+from im_utils import is_image, load_image, save_then_move, load_train_image_and_annot
 import im_utils
 from file_utils import ls
 
@@ -198,7 +198,7 @@ class Trainer():
 
         # mode is train or val
         annot_dir = self.train_config[f'{mode}_annot_dir']
-        if not [is_photo(a) for a in ls(annot_dir)]:
+        if not [is_image(a) for a in ls(annot_dir)]:
             return
 
         if self.first_loop:
