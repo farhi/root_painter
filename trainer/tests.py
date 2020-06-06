@@ -24,8 +24,8 @@ run_single = True
 if run_single:
     import sys
     sys.path.insert(1, 'tests')
-    from test_train_3d import test_train_to_predict_ones_from_random
-    test_train_to_predict_ones_from_random()
+    from test_train_3d import test_train_struct_seg_heart_patch as single_test
+    single_test()
 else:
     test_dir = pathlib.Path.cwd() / 'tests'
     os.chdir(test_dir)
