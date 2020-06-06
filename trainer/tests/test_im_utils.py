@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import numpy as np
+
 import im_utils
 
 
@@ -29,7 +30,7 @@ def test_get_class_map():
     annot[10, 10] = [255, 20, 20]
     annot[10, 15] = [255, 20, 20]
     annot[20, 20] = [255, 24, 20]
-    
+
     class_rgb = [255, 20, 20]
     class_map = im_utils.get_class_map(annot, class_rgb)
     assert class_map.shape == (100, 100)
@@ -41,7 +42,7 @@ def test_get_class_map():
 def test_seg_to_rgba():
     """
     The output of the segment method is a channel for each class
-    e.g an array of shape [2, 600, 900] 
+    e.g an array of shape [2, 600, 900]
     for 2 classes predicted in an image of size [600, 900]
 
     This should be displayed to the user
@@ -52,7 +53,6 @@ def test_seg_to_rgba():
     seg = np.zeros((5, 6, 9))
     seg[1, 1, 1] = 1
     seg[4, 5, 5] = 1
-    class_preds = np.argmax(seg, 0)
     classes_rgb = [
         [0, 255, 0, 0], # background
         [244, 0, 0, 255], # one of the foreground classes
