@@ -18,18 +18,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import shutil
 import json
+import time
+
 import numpy as np
 import torch
-import time
 import pytest
 from skimage.io import imread, imsave
+
 from unet import UNetGNRes
-from unet3d import UNet3D
 from model_utils import segment, create_first_model_with_random_weights
 import im_utils
 from trainer import Trainer
 
-def test_CNN_segment_classes():
+def test_segment_classes():
     """
     test CNN returns data in the correct shape for a single tile.
     Using random weights this time so the output is not checked.
@@ -48,14 +49,13 @@ def test_CNN_segment_classes():
     start = time.time()
     output = cnn(test_input)
     print('2d cnn time 31 class', time.time() - start)
-
     assert output.shape[1] == num_classes
 
 
 @pytest.mark.slow
-def test_segment_large_2D_image(monkeypatch):
-    # segmentation method reconstructs the output properly
-    
+def test_segment_large_2d_image(monkeypatch):
+    """ test segmentation method reconstructs the output properly """
+
     def cnn(tile):
         # return input with 3 channels is equivalent of 3 classes.
         return tile
@@ -70,9 +70,9 @@ def test_segment_large_2D_image(monkeypatch):
     in_w = 600
     out_w = in_w
     channels = 4
-    bs = 2
+    batch_size = 2
     test_input = np.random.rand(in_w, in_w, channels)
-    seg = segment(cnn, test_input, bs, in_w, out_w)
+    seg = segment(cnn, test_input, batch_size, in_w, out_w)
     assert seg.shape == (channels, in_w, in_w) # 3 class with same size as input
     seg = np.moveaxis(seg, 0, -1) # return back to original image shape
     # its not exactly the same due to converion to pytorch 16bit etc
@@ -80,28 +80,28 @@ def test_segment_large_2D_image(monkeypatch):
 
 
 @pytest.mark.slow
-def test_2D_segment_instruction():
+def test_2d_segment_instruction():
     """
-    A high level integration test for the 
+    A high level integration test for the
     full 2D image segmentation prcocess.
-    We don't check model accuracy here. 
+    We don't check model accuracy here.
     """
-    # create a 'scrap' folder for the test in /tmp 
+    # create a 'scrap' folder for the test in /tmp
     # this scrap folder will be used as the sync_directory for this test.
     sync_dir = os.path.join('/tmp', 'test_sync_dir')
     if os.path.isdir(sync_dir):
-        shutil.rmtree(sync_dir) 
+        shutil.rmtree(sync_dir)
     os.makedirs(sync_dir)
-    
+
     # create an instructions folder, models folder,  dataset folder
     # and a segmentation folder inside the sync_directory
     instruction_dir = os.path.join(sync_dir, 'instructions')
     dataset_dir = os.path.join(sync_dir, 'dataset')
     seg_dir = os.path.join(sync_dir, 'seg')
     model_dir = os.path.join(sync_dir, 'models')
-    for d in [instruction_dir, dataset_dir, model_dir, seg_dir]:
-        os.makedirs(d)
-    
+    for dir_path in [instruction_dir, dataset_dir, model_dir, seg_dir]:
+        os.makedirs(dir_path)
+
     # create a model file (random weights is fine)
     # and save the model to the models folder.
     create_first_model_with_random_weights(model_dir, num_classes=3, dimensions=2)
@@ -117,16 +117,16 @@ def test_2D_segment_instruction():
         "seg_dir": seg_dir,
         "file_names": ['example_image.jpeg'],
         "model_dir": model_dir,
-        "classes": [('bg', [0,180,0,0], 'w'),
-                    ('red', [255,0,0,255], '1'),
+        "classes": [('bg', [0, 180, 0, 0], 'w'),
+                    ('red', [255, 0, 0, 255], '1'),
                     ('blue', [0, 0, 255, 255], '2')]
     }
-    # save the instruction (json file) to the instructions folder. 
+    # save the instruction (json file) to the instructions folder.
     hash_str = '_' + str(hash(json.dumps(content)))
     fpath = os.path.join(instruction_dir, 'segment' + hash_str)
     with open(fpath, 'w') as json_file:
         json.dump(content, json_file, indent=4)
- 
+
     # create a trainer object and set the sync directory
     # to be the scrap folder which has been created.
     trainer = Trainer(sync_dir)
@@ -139,16 +139,14 @@ def test_2D_segment_instruction():
     seg_path = os.path.join(seg_dir, 'example_image.png')
     assert os.path.isfile(seg_path)
 
-    # assert that it it is non-zero (random weights don't do this) 
+    # assert that it it is non-zero (random weights don't do this)
     seg = imread(seg_path)
     assert np.sum(seg) > 0
 
     # assert that it has the same shape as the input image
     assert seg.shape == (example_image.shape[0], example_image.shape[1], 4)
     # assert that the segment instruction has been deleted.
-    assert not os.path.isfile(fpath) 
+    assert not os.path.isfile(fpath)
 
     # clean up the the scrap folder that was created in /tmp
-    shutil.rmtree(sync_dir) 
-
-
+    shutil.rmtree(sync_dir)
