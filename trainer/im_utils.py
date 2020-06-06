@@ -30,7 +30,6 @@ from skimage.exposure import rescale_intensity
 from skimage.io import imread, imsave
 import nibabel as nib
 from file_utils import ls
-import im_utils
 
 
 def is_image(fname):
@@ -251,9 +250,9 @@ def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
     padded_im_shape = (annot.shape[0] + (pad_width * 2), 
                        annot.shape[1] + (pad_width * 2))
     out_tile_shape = (out_w, out_w)
-    coords = im_utils.get_coords(padded_im_shape, annot.shape,
-                                 in_tile_shape=(in_w, in_w, 3),
-                                 out_tile_shape=out_tile_shape)
+    coords = get_coords(padded_im_shape, annot.shape,
+                        in_tile_shape=(in_w, in_w, 3),
+                        out_tile_shape=out_tile_shape)
     mtime = os.path.getmtime(annot_path)
     for (x, y) in coords:
         annot_tile = annot[y:y+out_w, x:x+out_w]
@@ -356,8 +355,7 @@ def load_image(image_path):
     if image_path.endswith('.nii.gz'):
         image = nib.load(image_path)
         image = np.array(image.dataobj)
-        image = np.expand_dims(image, axis=0)
-        image = np.expand_dims(image, axis=0)
+        image = np.moveaxis(image, -1, 0)
         dims = 3
     else:
         dims = 2
