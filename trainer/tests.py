@@ -19,13 +19,13 @@ import os
 import pytest
 import pathlib
 
-run_single = False
+run_single = True
 
 if run_single:
     import sys
     sys.path.insert(1, 'tests')
-    from test_train_3d import test_train_to_predict_zeros_from_random
-    test_train_to_predict_zeros_from_random()
+    from test_train_3d import test_train_to_predict_ones_from_random
+    test_train_to_predict_ones_from_random()
 else:
     test_dir = pathlib.Path.cwd() / 'tests'
     os.chdir(test_dir)
