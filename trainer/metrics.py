@@ -38,6 +38,16 @@ def get_metric_csv_row(metrics):
     return ','.join([str(p) for p in parts]) + '\n'
 
 
+def get_metrics_from_arrays(y_pred, y_true, class_name):
+    y_true = y_true.reshape(-1)
+    y_pred = y_pred.reshape(-1)
+    tp = np.sum(np.logical_and(y_pred == 1, y_true == 1))
+    tn = np.sum(np.logical_and(y_pred == 0, y_true == 0))
+    fp = np.sum(np.logical_and(y_pred == 1, y_true == 0))
+    fn = np.sum(np.logical_and(y_pred == 0, y_true == 1))
+    m = get_metrics(tp, fp, tn, fn, class_name)
+    return m
+
 def get_metrics(tp:int, fp:int, tn:int, fn:int, class_name:str) -> dict:
     # for the mtrics function in model utils
     assert not np.isnan(tp)
