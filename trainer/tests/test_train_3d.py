@@ -83,22 +83,20 @@ def test_train_to_predict_ones_from_random():
 def test_train_identity_from_random():
     """
     Very simple test to check that we can train the CNN model to
-    map input to output
+    map input to output. Changing random numbers.
 
     It cannot actually do this but we can test that it gets close.
-
     """
     cnn = UNet3D(im_channels=1, out_channels=1).cuda()
     batch_size = 1
-    # small input for this test to make it go faster.
-    test_input = torch.rand((batch_size, 1, 56, 56, 56)).cuda()
-    target = test_input[:, :, 19:-19, 19:-19, 19:-19]
-    outputs = cnn(test_input)
-    assert outputs.shape[0] == batch_size
     optimizer = torch.optim.SGD(cnn.parameters(), lr=0.01, momentum=0.99, nesterov=True)
     criterion = torch.nn.MSELoss() # see [1]
 
     for _ in range(100):
+        # small input for this test to make it go faster.
+        test_input = torch.rand((batch_size, 1, 56, 56, 56)).cuda()
+        target = test_input[:, :, 19:-19, 19:-19, 19:-19]
+
         optimizer.zero_grad()
         outputs = cnn(test_input)
         # Also consider MarginRankingLoss for similar problems, see [0]
@@ -109,6 +107,9 @@ def test_train_identity_from_random():
         if diff_mean < 0.1:
             return
     assert False, 'test took too long'
+
+
+
 
 # pylint: disable=W0105 # string has no effect
 # pylint: disable=C0301 # line too long
