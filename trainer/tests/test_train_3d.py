@@ -15,13 +15,19 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import os
+from pathlib import Path
 
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import pytest
 
 from unet3d import UNet3D
+import im_utils
+from metrics import get_metrics_from_arrays
+
 
 
 @pytest.mark.slow
@@ -110,6 +116,69 @@ def test_train_identity_from_random():
 
 
 
+def load_heart_patch(data_dir):
+    """ Load a heart from the struct seg data.
+        Include binary (0,1) labels for the voxels which contain the heart.
+        Return a patch small enough to fit on the GPU (56, 240, 240)
+    """
+    image, _ = im_utils.load_image(os.path.join(data_dir, 'data.nii.gz'))
+    annot, _ = im_utils.load_image(os.path.join(data_dir, 'label.nii.gz'))
+
+    image_patch = image[12:12+56, 150:150+240, 150:150+240]
+    annot_patch = annot[12:12+56, 150:150+240, 150:150+240]
+    # it's only the middle bit due to valid padding
+    annot_patch = annot_patch[19:-19, 23:-23, 23:-23]
+    heart_labels = (annot_patch == 3).astype(np.int16) # lets keep it simple at the start
+    return image_patch, heart_labels
+
+
+
+@pytest.mark.slow
+def test_train_struct_seg_heart_patch():
+    """
+    Test training CNN model to predict heart in a single struct seg patch.
+
+    This test requires the struct seg dataset has been downloaded to the users
+    home folder otherwise it will be skipped.
+    """
+    data_dir = os.path.join(Path.home(), 'datasets', 'Thoracic_OAR', '1')
+    if not os.path.isdir(data_dir):
+        print('skip test as data not found')
+        return
+
+    cnn = UNet3D(im_channels=1, out_channels=2).cuda() # heart / not heart
+    optimizer = torch.optim.SGD(cnn.parameters(), lr=0.01, momentum=0.99, nesterov=True)
+
+    # get data and heart labels for a patch with the heart in it
+    image_patch, heart_labels = load_heart_patch(data_dir)
+
+    # Add chanel dimension, I guess this could be useful for multi-modality
+    image_patch = np.expand_dims(image_patch, axis=0)
+
+    # Add batch dimension
+    image_patch = np.expand_dims(image_patch, axis=0)
+    heart_labels = np.expand_dims(heart_labels, axis=0)
+
+    # prepare for gpu
+    image_patch = torch.from_numpy(image_patch).cuda().float()
+    heart_labels = torch.from_numpy(heart_labels).cuda().long()
+
+    # 25 steps should be enough to get at least 0.9 dice
+    for i in range(35):
+        optimizer.zero_grad()
+        outputs = cnn(image_patch)
+        loss = F.cross_entropy(outputs, heart_labels)
+        loss.backward()
+        optimizer.step()
+        heart_preds = F.softmax(outputs, 1)[0].detach()
+        heart_preds = torch.argmax(heart_preds, axis=0).cpu().numpy()
+        dice = get_metrics_from_arrays(heart_preds,
+                                       heart_labels.cpu().numpy(),
+                                       'heart')['dice']
+        print(f'Fitting single heart patch. {i} dice:{dice}, loss: {loss.item()}')
+        if dice > 0.9:
+            return
+    assert False, 'Takes too long to fit heart patch'
 
 # pylint: disable=W0105 # string has no effect
 # pylint: disable=C0301 # line too long
