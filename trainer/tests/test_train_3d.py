@@ -222,31 +222,25 @@ def test_train_struct_seg_heart_and_lung_patch():
 
     defined = torch.ones(labels_patch.shape).cuda().float()
 
-    # 25 steps should be enough to get at least 0.9 dice
-    for i in range(12000):
+    for j in range(200):
         optimizer.zero_grad()
         outputs = cnn(image_patch)
-
-        loss = F.cross_entropy(outputs, labels_patch)
-        # loss = multiclass_loss(outputs, defined, labels_patch)
+        loss = multiclass_loss(outputs, defined, labels_patch)
         loss.backward()
         optimizer.step()
         preds = F.softmax(outputs, 1)[0].detach()
         class_preds_np = torch.argmax(preds, axis=0).cpu().numpy()
-        print(f'Fitting single heart patch. {i} loss: {loss.item()}')
         dices = [] 
         for i, class_name in enumerate(class_names):
             m = get_metrics_from_arrays(class_preds_np==i,
                                            labels_patch_np==i,
                                             class_name)
-            #print(class_name, 'dice', dice, 't
-            print(class_name, get_metrics_str(m, to_use=['dice', 'true_mean', 'pred_mean', 'true']))
-            with open('metric_log_cx.csv', 'a') as f:
-                print(get_metric_csv_row(m), file=f)
             dices.append(m['dice'])
-        if np.mean(dices) > 0.98:
+        mean_dice = np.mean(dices)
+        print(f'Fitting patch. {j} loss: {loss.item()}, mean_dice', mean_dice)
+        if mean_dice > 0.7:
             return
-    assert False, 'Takes too long to fit heart patch'
+    assert False, 'Takes too long to fit patch'
 
 
 
