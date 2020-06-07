@@ -26,7 +26,8 @@ import pytest
 
 from unet3d import UNet3D
 import im_utils
-from metrics import get_metrics_from_arrays
+from metrics import get_metrics_from_arrays, get_metrics_str, get_metric_csv_row
+from loss import multiclass_loss 
 
 
 
@@ -116,7 +117,7 @@ def test_train_identity_from_random():
 
 
 
-def load_heart_patch(data_dir):
+def load_heart_patch(data_dir, filter_labels=True):
     """ Load a heart from the struct seg data.
         Include binary (0,1) labels for the voxels which contain the heart.
         Return a patch small enough to fit on the GPU (56, 240, 240)
@@ -128,8 +129,12 @@ def load_heart_patch(data_dir):
     annot_patch = annot[12:12+56, 150:150+240, 150:150+240]
     # it's only the middle bit due to valid padding
     annot_patch = annot_patch[19:-19, 23:-23, 23:-23]
-    heart_labels = (annot_patch == 3).astype(np.int16) # lets keep it simple at the start
-    return image_patch, heart_labels
+
+    if filter_labels:
+        heart_labels = (annot_patch == 3).astype(np.int16) # lets keep it simple at the start
+        return image_patch, heart_labels
+
+    return image_patch, annot_patch.astype(np.int16)
 
 
 
@@ -179,6 +184,71 @@ def test_train_struct_seg_heart_patch():
         if dice > 0.9:
             return
     assert False, 'Takes too long to fit heart patch'
+
+
+
+@pytest.mark.slow
+def test_train_struct_seg_heart_and_lung_patch():
+    """
+    Test training CNN model to predict heart in a single struct seg patch.
+
+    This test requires the struct seg dataset has been downloaded to the users
+    home folder otherwise it will be skipped.
+    """
+    data_dir = os.path.join(Path.home(), 'datasets', 'Thoracic_OAR', '1')
+    if not os.path.isdir(data_dir):
+        print('skip test as data not found')
+        return
+
+    cnn = UNet3D(im_channels=1, out_channels=7).cuda() # heart / not heart
+    optimizer = torch.optim.SGD(cnn.parameters(), lr=0.01, momentum=0.99, nesterov=True)
+
+    # get data and heart labels for a patch with the heart in it
+    image_patch, labels_patch = load_heart_patch(data_dir, filter_labels=False)
+    
+    class_names = ['background', 'lungs1', 'lung2',
+                   'heart', 'esophagus', 'trachia', 'spine']
+
+    # Add chanel dimension, I guess this could be useful for multi-modality
+    image_patch = np.expand_dims(image_patch, axis=0)
+
+    # Add batch dimension
+    image_patch = np.expand_dims(image_patch, axis=0)
+    labels_patch_np = np.expand_dims(labels_patch, axis=0)
+
+    # prepare for gpu
+    image_patch = torch.from_numpy(image_patch).cuda().float()
+    labels_patch = torch.from_numpy(labels_patch_np).cuda().long()
+
+    defined = torch.ones(labels_patch.shape).cuda().float()
+
+    # 25 steps should be enough to get at least 0.9 dice
+    for i in range(12000):
+        optimizer.zero_grad()
+        outputs = cnn(image_patch)
+
+        loss = F.cross_entropy(outputs, labels_patch)
+        # loss = multiclass_loss(outputs, defined, labels_patch)
+        loss.backward()
+        optimizer.step()
+        preds = F.softmax(outputs, 1)[0].detach()
+        class_preds_np = torch.argmax(preds, axis=0).cpu().numpy()
+        print(f'Fitting single heart patch. {i} loss: {loss.item()}')
+        dices = [] 
+        for i, class_name in enumerate(class_names):
+            m = get_metrics_from_arrays(class_preds_np==i,
+                                           labels_patch_np==i,
+                                            class_name)
+            #print(class_name, 'dice', dice, 't
+            print(class_name, get_metrics_str(m, to_use=['dice', 'true_mean', 'pred_mean', 'true']))
+            with open('metric_log_cx.csv', 'a') as f:
+                print(get_metric_csv_row(m), file=f)
+            dices.append(m['dice'])
+        if np.mean(dices) > 0.98:
+            return
+    assert False, 'Takes too long to fit heart patch'
+
+
 
 # pylint: disable=W0105 # string has no effect
 # pylint: disable=C0301 # line too long
