@@ -31,10 +31,9 @@ def get_metrics_str(all_metrics, to_use=None):
 
 def get_metric_csv_row(metrics):
     now_str = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-    parts = [now_str, metrics['TP'], metrics['FP'], metrics['TN'],
-             metrics['FN'], round(metrics['precision'], 4),
-             round(metrics['recall'], 4), round(metrics['f1'], 4),
-             metrics['defined'], metrics['duration']]
+    parts = [now_str, metrics['class'], metrics['tp'], metrics['fp'], metrics['tn'],
+             metrics['fn'], round(metrics['precision'], 4),
+             round(metrics['recall'], 4), round(metrics['dice'], 4)]
     return ','.join([str(p) for p in parts]) + '\n'
 
 
@@ -74,5 +73,5 @@ def get_metrics(tp:int, fp:int, tn:int, fn:int, class_name:str) -> dict:
         "recall": recall,
         "dice": f1,
         "true_mean": (tp + fn) / total,
-        "pred_mean": (tp + fp) / total
+        "true": (tp + fn)
     }
