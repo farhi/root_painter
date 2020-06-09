@@ -59,9 +59,10 @@ class Trainer():
         self.model = None
         self.first_loop = True
     
-        self.in_w = 572
-        self.out_w = 500
-
+        self.in_w = 240
+        self.out_w = 194
+        self.in_d = 56
+        self.out_d = 18
         mem_per_item = 3800000000
         total_mem = 0
         for i in range(torch.cuda.device_count()):
@@ -196,10 +197,10 @@ class Trainer():
         Path(os.path.join(self.msg_dir, message)).touch()
 
     def one_epoch(self, model, mode='train', val_tile_refs=None):
-
         # mode is train or val
         annot_dir = self.train_config[f'{mode}_annot_dir']
         if not [is_image(a) for a in ls(annot_dir)]:
+            print('quit because no annotations')
             return
 
         if self.first_loop:
@@ -213,6 +214,7 @@ class Trainer():
             dataset = RPDataset(self.train_config['val_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
+                                self.in_d, self.out_d,
                                 self.train_config['classes'],
                                 'val', self.val_tile_refs)
             torch.set_grad_enabled(False)
@@ -220,14 +222,17 @@ class Trainer():
             dataset = RPDataset(self.train_config['train_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
+                                self.in_d, self.out_d,
                                 self.train_config['classes'], 'train')
 
             torch.set_grad_enabled(True)
         else:
             raise Exception(f"Invalid mode: {mode}")
         
-        loader = DataLoader(dataset, self.bs, shuffle=(mode=='train'), num_workers=16,
+
+        loader = DataLoader(dataset, self.bs, shuffle=(mode=='train'), num_workers=12,
                             drop_last=False, pin_memory=True)
+
 
         epoch_start = time.time()
         if mode == 'train':
@@ -242,13 +247,13 @@ class Trainer():
         for step, (im_tiles,
                    target_tiles,
                    defined_tiles) in enumerate(loader):
-
             self.check_for_instructions()
             im_tiles = im_tiles.cuda()
             target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
             self.optimizer.zero_grad()
             outputs = model(im_tiles)
+
             loss = criterion(outputs, defined_tiles, target_tiles)
 
             if mode == 'train':            
@@ -274,12 +279,16 @@ class Trainer():
             Also stop training if the current model hasnt
             beat the previous model for {max_epochs}
         """
+        print('validation')
         model_dir = self.train_config['model_dir']
         prev_model, prev_path = model_utils.get_prev_model(model_dir,
-                                                           len(self.train_config['classes']))
+                                                           len(self.train_config['classes']),
+                                                           dims=self.train_config['dimensions'])
         self.val_tile_refs = im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
                                                         copy.deepcopy(self.val_tile_refs),
-                                                        self.in_w, self.out_w)
+                                                        self.in_w, self.out_w,
+                                                        self.train_config['dimensions'],
+                                                        self.in_d, self.out_d)
 
         cur_loss = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
         start = time.time()

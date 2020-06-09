@@ -17,12 +17,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import os
 from pathlib import Path
-
+import json
+import shutil
+from trainer import Trainer
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import pytest
+
 
 from unet3d import UNet3D
 import im_utils
@@ -241,6 +244,83 @@ def test_train_struct_seg_all_classes_patch():
         if mean_dice > 0.7:
             return
     assert False, 'Takes too long to fit patch'
+
+
+
+@pytest.mark.slow
+def test_train_struct_seg_heart_from_image():
+    """
+    Test training CNN model to predict heart in a single struct seg image
+
+    This test requires the struct seg dataset has been downloaded to the users
+    home folder otherwise it will be skipped.
+    """
+    data_dir = os.path.join(Path.home(), 'datasets', 'Thoracic_OAR', '1')
+    if not os.path.isdir(data_dir):
+        print('skip test as data not found')
+        return
+
+    # create a temporary sync dir
+    sync_dir = os.path.join('/tmp', 'test_sync_dir')
+
+    if os.path.isdir(sync_dir):    
+        shutil.rmtree(sync_dir)
+    os.makedirs(sync_dir)
+
+    # create an instructions folder, models folder,  dataset folder
+    # and a segmentation folder inside the sync_directory
+    instruction_dir = os.path.join(sync_dir, 'instructions')
+    dataset_dir = os.path.join(sync_dir, 'dataset')
+    seg_dir = os.path.join(sync_dir, 'seg')
+    model_dir = os.path.join(sync_dir, 'models')
+    annot_dir = os.path.join(sync_dir, 'annots')
+    message_dir = os.path.join(sync_dir, 'messages')
+    for d in [instruction_dir, dataset_dir,
+              model_dir, seg_dir, annot_dir, message_dir]:
+        os.makedirs(d)
+
+    # create a dataset containing a single image
+    image, _ = im_utils.load_image(os.path.join(data_dir, 'data.nii.gz'))
+    annot, _ = im_utils.load_image(os.path.join(data_dir, 'label.nii.gz'))
+
+    # we know it is a label because it is in the annot folder
+    target = os.path.join(annot_dir, 'data.nii.gz') 
+    annot = (annot == 3).astype(np.int16) # only heart labels this time.
+    im_utils.save_nifty(target, annot)
+
+    # also save the image in the datasets folder
+    target = os.path.join(dataset_dir, 'data.nii.gz') 
+    im_utils.save_nifty(target, image)
+
+    # send a 'start_training' instruction
+    content = {
+        "dataset_dir": dataset_dir,
+        "model_dir": model_dir, 
+        "val_annot_dir": annot_dir,
+        "train_annot_dir": annot_dir,
+        "message_dir": message_dir,
+        "dimensions": 3,
+        "classes": [('bg', [0,180,0,0], 'w'),
+                    ('heart', [1, 0, 255, 255], '1')]
+    }
+    hash_str = '_' + str(hash(json.dumps(content)))
+    fpath = os.path.join(instruction_dir, 'start_training' + hash_str)
+    with open(fpath, 'w') as json_file:
+        json.dump(content, json_file, indent=4)
+ 
+    trainer = Trainer(sync_dir)
+    trainer.bs = 2
+
+    trainer.main_loop()
+    # tell the trainer to check for instructions
+    #trainer.check_for_instructions()
+    
+    # check the metrics on this image
+    # ensure the dice for all structure is 0.9 or higher.
+    # end test
+    assert False, 'Takes too long to fit patch'
+
+
 
 
 

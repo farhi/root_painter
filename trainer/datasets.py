@@ -90,7 +90,7 @@ class UNetTransformer():
 
 
 class RPDataset(Dataset):
-    def __init__(self, annot_dir, dataset_dir, in_w, out_w, classes,
+    def __init__(self, annot_dir, dataset_dir, in_w, out_w, in_d, out_d, classes,
                  mode, val_tile_refs=None):
         """
         in_w and out_w are the tile size in pixels
@@ -105,6 +105,8 @@ class RPDataset(Dataset):
         target_classes = [c[1][:3] for c in classes]
         self.in_w = in_w
         self.out_w = out_w
+        self.in_d = in_d
+        self.out_d = out_d
         self.annot_dir = annot_dir
         self.target_classes = target_classes
         self.dataset_dir = dataset_dir
@@ -118,21 +120,118 @@ class RPDataset(Dataset):
         else:
             # use at least 612 but when dataset gets bigger start to expand
             # to prevent validation from taking all the time (relatively)
-            return max(612, len(ls(self.annot_dir)) * 2)
+            return max(64, len(ls(self.annot_dir)) * 2)
 
 
-    def get_train_item(self, i):
-        # todo this is a little too random for validation.
-        image, annot, _ = load_train_image_and_annot(self.dataset_dir,
-                                                     self.annot_dir)
+    def get_val_item(self, tile_ref, i):
+        fname, (x, y), _ = tile_ref
+        annot_path = os.path.join(self.annot_dir, fname)
+        image_path_part = os.path.join(self.dataset_dir, os.path.splitext(fname)[0])
+        # it's possible the image has a different extenstion
+        # so use glob to get it
+        image_path = glob.glob(image_path_part + '.*')[0]
+        image = im_utils.load_image(image_path)
         tile_pad = (self.in_w - self.out_w) // 2
 
+        padded_im = im_utils.pad(image, tile_pad)
+        im_tile = padded_im[y:y+self.in_w,
+                            x:x+self.in_w]
+        im_tile = img_as_float32(im_tile)
+        im_tile = im_utils.normalize_tile(im_tile)
+        annot = img_as_ubyte(imread(annot_path))
+        assert np.sum(annot) > 0
+        assert image.shape[2] == 3 # should be RGB
+        annot_tile = annot[y:y+self.out_w, x:x+self.out_w]
+        target, mask = annot_to_target_and_mask(annot_tile, self.target_classes)
+        mask = mask.astype(np.float32)
+        mask = torch.from_numpy(mask)
+        target = target.astype(np.int64)
+        target = torch.from_numpy(target)
+        im_tile = im_tile.astype(np.float32)
+        im_tile = np.moveaxis(im_tile, -1, 0)
+        im_tile = torch.from_numpy(im_tile)
+        return im_tile, target, mask
+
+    def __getitem__(self, i):
+        if self.mode == 'val':
+            return self.get_val_item(self.val_tiles_refs[i], i)
+        elif self.mode == 'train':
+            return self.get_train_item(i)
+
+    def get_train_item(self, i):
+        image, annot, _, dims = load_train_image_and_annot(self.dataset_dir,
+                                                           self.annot_dir)
+        if dims == 2:
+            return self.get_train_item_2d(image, annot, i)
+        else:
+            return self.get_train_item_3d(image, annot, i)
+
+    def get_train_item_3d(self, image, annot, i): 
+        # no padding OR augmentation for now. 
         # ensures each pixel is sampled with equal chance
+        padded_d = image.shape[0]
+        padded_h = image.shape[1]
+        padded_w = image.shape[2]
+
+        padded_im = image
+        padded_annot = annot
+
+        right_lim = padded_w - self.in_w
+        bottom_lim = padded_h - self.in_w
+        depth_lim = padded_d - self.in_d
+
+        while True:
+            x_in = math.floor(random.random() * right_lim)
+            y_in = math.floor(random.random() * bottom_lim)
+            z_in = math.floor(random.random() * depth_lim)
+            annot_tile = padded_annot[z_in:z_in+self.in_d,
+                                      y_in:y_in+self.in_w,
+                                      x_in:x_in+self.in_w]
+            if np.sum(annot_tile) > 50000: # try with extra heart
+                break
+
+        im_tile = padded_im[z_in:z_in+self.in_d,
+                            y_in:y_in+self.in_w,
+                            x_in:x_in+self.in_w]
+
+        assert annot_tile.shape == (self.in_d, self.in_w, self.in_w), (
+            f" shape is {annot_tile.shape}")
+
+        assert im_tile.shape == (self.in_d, self.in_w, self.in_w), (
+            f" shape is {im_tile.shape}")
+
+        im_tile = img_as_float32(im_tile)
+        im_tile = im_utils.normalize_tile(im_tile)
+        
+        # Annotion is cropped post augmentation to ensure
+        # elastic grid doesn't remove the edges.
+        width_diff = self.in_w - self.out_w
+        pad_width = width_diff // 2
+
+        depth_diff = self.in_d - self.out_d
+        pad_depth = depth_diff // 2
+        annot_tile = annot_tile[pad_depth:-pad_depth,
+                                pad_width:-pad_width,
+                                pad_width:-pad_width]
+
+        im_tile = im_tile.astype(np.float32)
+        im_tile = torch.from_numpy(np.expand_dims(im_tile, axis=0)) # add channels
+        annot_tile = torch.from_numpy(annot_tile).long()
+
+        mask = np.ones(annot_tile.shape) # all defined for now.
+        mask = mask.astype(np.float32)
+        mask = torch.from_numpy(mask)
+
+        return im_tile, annot_tile, mask
+
+
+    def get_train_item_2d(self, image, annot, i): 
+        # ensures each pixel is sampled with equal chance
+        tile_pad = (self.in_w - self.out_w) // 2
         im_pad_w = self.out_w + tile_pad
         padded_w = image.shape[1] + (im_pad_w * 2)
         padded_h = image.shape[0] + (im_pad_w * 2)
         padded_im = im_utils.pad(image, im_pad_w)
-
         # This speeds up the padding.
         annot = annot[:, :, :3]
         padded_annot = im_utils.pad(annot, im_pad_w)
@@ -171,7 +270,6 @@ class RPDataset(Dataset):
         annot_tile = annot_tile[tile_pad:-tile_pad, tile_pad:-tile_pad]
         target, mask = annot_to_target_and_mask(annot_tile, self.target_classes)
 
-
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)
 
@@ -184,7 +282,40 @@ class RPDataset(Dataset):
         return im_tile, target, mask
 
     def get_val_item(self, tile_ref, i):
-        fname, (x, y), _ = tile_ref
+        _, coord, _ = tile_ref
+        if len(coord) == 2:
+            return self.get_val_item_2d(tile_ref, i)
+        else:  
+            return self.get_val_item_3d(tile_ref, i)
+
+    def get_val_item_3d(self, tile_ref, i):
+        fname, (x, y, z), _ = tile_ref
+
+        image_path = os.path.join(self.dataset_dir, fname)
+        image, _ = im_utils.load_image(image_path)
+        pad_width = (self.in_w - self.out_w) // 2
+        pad_depth = (self.in_d - self.out_d) // 2
+        padded_im = im_utils.pad_3d(image, pad_width, pad_depth)
+        im_tile = padded_im[z:z+self.in_d, y:y+self.in_w, x:x+self.in_w]
+        im_tile = img_as_float32(im_tile)
+        im_tile = im_utils.normalize_tile(im_tile)
+
+        annot_path = os.path.join(self.annot_dir, fname)
+        annot, _ = im_utils.load_image(annot_path)
+
+        assert np.sum(annot) > 0
+        annot_tile = annot[z:z+self.out_d, y:y+self.out_w, x:x+self.out_w]
+        mask = np.ones(annot_tile.shape).astype(np.float32)
+        # mask = mask.astype(np.float32)
+        # mask = torch.from_numpy(mask)
+        #target = target.astype(np.int64)
+        #target = torch.from_numpy(target)
+        #im_tile = np.moveaxis(im_tile, -1, 0)
+        im_tile = torch.from_numpy(np.expand_dims(im_tile, axis=0))
+        annot_tile = torch.from_numpy(annot_tile).long()
+        return im_tile, annot_tile, mask
+
+    def get_val_item_2d(self, tile_ref, i):
         annot_path = os.path.join(self.annot_dir, fname)
         image_path_part = os.path.join(self.dataset_dir, os.path.splitext(fname)[0])
         # it's possible the image has a different extenstion
@@ -192,10 +323,8 @@ class RPDataset(Dataset):
         image_path = glob.glob(image_path_part + '.*')[0]
         image = im_utils.load_image(image_path)
         tile_pad = (self.in_w - self.out_w) // 2
-
         padded_im = im_utils.pad(image, tile_pad)
-        im_tile = padded_im[y:y+self.in_w,
-                            x:x+self.in_w]
+        im_tile = padded_im[y:y+self.in_w, x:x+self.in_w]
         im_tile = img_as_float32(im_tile)
         im_tile = im_utils.normalize_tile(im_tile)
         annot = img_as_ubyte(imread(annot_path))

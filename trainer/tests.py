@@ -25,7 +25,7 @@ if run_single:
     import sys
     sys.path.insert(1, 'tests')
     # from test_train_3d import test_train_struct_seg_heart_patch as single_test
-    from test_train_3d import test_train_struct_seg_all_classes_patch as single_test
+    from test_train_3d import test_train_struct_seg_heart_from_image as single_test
     single_test()
 else:
     test_dir = pathlib.Path.cwd() / 'tests'

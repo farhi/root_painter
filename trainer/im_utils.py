@@ -60,17 +60,24 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
             fnames = [a for a in fnames if is_image(a)]
             fname = random.sample(fnames, 1)[0]
             annot_path = os.path.join(train_annot_dir, fname)
-            image_path_part = os.path.join(dataset_dir,
-                                           os.path.splitext(fname)[0])
-            # it's possible the image has a different extenstion
-            # so use glob to get it
-            image_path = glob.glob(image_path_part + '.*')[0]
-            image = load_image(image_path)
-            annot = img_as_ubyte(imread(annot_path))
-            assert np.sum(annot) > 0
-            assert image.shape[2] == 3 # should be RGB
+            dims = 2
+
+            if fname.endswith('.nii.gz'):
+                image, _ = load_image(os.path.join(dataset_dir, fname))
+                annot, _ = load_image(annot_path)
+                dims = 3
+            else:
+                image_path_part = os.path.join(dataset_dir,
+                                               os.path.splitext(fname)[0])
+                # it's possible the image has a different extenstion
+                # so use glob to get it
+                image_path = glob.glob(image_path_part + '.*')[0]
+                image = load_image(image_path)
+                annot = img_as_ubyte(imread(annot_path))
+                assert image.shape[2] == 3 # should be RGB
+            assert np.sum(annot) > 0 
             # also return fname for debugging purposes.
-            return image, annot, fname
+            return image, annot, fname, dims
         except Exception as e:
             # This could be due to an empty annotation saved by the user.
             # Which happens rarely due to deleting all labels in an 
@@ -186,7 +193,7 @@ def add_gaussian_noise(image, sigma):
     return image + gaussian_noise
 
 
-def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w):
+def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w, dims=2, in_d=None, out_d=None):
     """
     Get tile info which covers all annotated regions of the annotation dataset.
     The list must be structured such that an index can be used to refer to each example
@@ -233,7 +240,11 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w):
             if cur_mtime > prev_mtime:
                 need_new_refs = True
         if need_new_refs:
-            new_file_refs = get_val_tile_refs_for_annot(annot_dir, fname, in_w, out_w)
+            if in_d:
+                new_file_refs = get_val_tile_refs_for_annot_3d(annot_dir, fname,   
+                                                               in_w, out_w, in_d, out_d)
+            else:
+                new_file_refs = get_val_tile_refs_for_annot(annot_dir, fname, in_w, out_w)
             tile_refs += new_file_refs
         else:
             tile_refs += prev_refs
@@ -262,6 +273,27 @@ def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
             new_file_refs.append([annot_fname, [x, y], mtime])
     return new_file_refs
 
+def get_val_tile_refs_for_annot_3d(annot_dir, annot_fname, in_w, out_w, in_d, out_d):
+    width_diff = in_w - out_w
+    pad_width = width_diff // 2
+    annot_path = os.path.join(annot_dir, annot_fname)
+    annot, dims = load_image(annot_path)
+    new_file_refs = []
+    annot_path = os.path.join(annot_dir, annot_fname)
+    padded_im_shape = annot.shape
+    out_tile_shape = (out_w, out_w)
+    coords = get_coords_3d(padded_im_shape, annot.shape,
+                            in_tile_shape=(in_d, in_w, in_w),
+                            out_tile_shape=(out_d, out_w, out_w))
+    mtime = os.path.getmtime(annot_path)
+    for (x, y, z) in coords:
+        annot_tile = annot[z:z+out_d, y:y+out_w, x:x+out_w]
+        # we only want to validate on annotation tiles
+        # which have annotation information.
+        if np.sum(annot_tile):
+            new_file_refs.append([annot_fname, [x, y, z], mtime])
+    return new_file_refs
+
 
 def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
 
@@ -287,10 +319,10 @@ def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     return tile_coords
 
 def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
-    assert im_shape[0] == 1 # channel dimension first for 3D
-    depth_count = ceil(im_shape[1] / out_tile_shape[0])
-    vertical_count = ceil(im_shape[2] / out_tile_shape[1])
-    horizontal_count = ceil(im_shape[3] / out_tile_shape[2])
+    assert len(im_shape) == 3 # d, h, w
+    depth_count = ceil(im_shape[0] / out_tile_shape[0])
+    vertical_count = ceil(im_shape[1] / out_tile_shape[1])
+    horizontal_count = ceil(im_shape[2] / out_tile_shape[2])
 
     # first split the image based on the tiles that fit
     z_coords = [d*out_tile_shape[0] for d in range(depth_count-1)] # z is depth
@@ -301,9 +333,9 @@ def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     # (Might go outside the image)
     # so get the tile positiion by subtracting tile size from the
     # edge of the image.
-    lower_z = padded_im_shape[1] - in_tile_shape[0]
-    bottom_y = padded_im_shape[2] - in_tile_shape[1]
-    right_x = padded_im_shape[3] - in_tile_shape[2]
+    lower_z = padded_im_shape[0] - in_tile_shape[0]
+    bottom_y = padded_im_shape[1] - in_tile_shape[1]
+    right_x = padded_im_shape[2] - in_tile_shape[2]
 
     z_coords.append(lower_z)
     y_coords.append(bottom_y)
