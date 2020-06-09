@@ -351,6 +351,8 @@ def save_then_move(out_path, seg, dims):
 
 
 def save_nifty(image_path, im):
+    assert len(im.shape) == 3
+    im = np.moveaxis(im, 0, -1) # depth moved to the end.
     img = nib.Nifti1Image(im, np.eye(4))
     img.to_filename(image_path)
 
@@ -360,7 +362,7 @@ def load_image(image_path):
     if image_path.endswith('.nii.gz'):
         image = nib.load(image_path)
         image = np.array(image.dataobj)
-        image = np.moveaxis(image, -1, 0)
+        image = np.moveaxis(image, -1, 0) # depth moved to beginning
         dims = 3
     else:
         dims = 2
