@@ -170,7 +170,8 @@ class Trainer():
             if model_paths:
                 self.model = model_utils.load_model(model_paths[0], num_classes=len(classes))
             else:
-                self.model = create_first_model_with_random_weights(model_dir, num_classes=len(classes))
+                self.model = create_first_model_with_random_weights(model_dir, num_classes=len(classes),
+                                                                    dimensions=int(self.train_config['dimensions']))
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01,
                                              momentum=0.99, nesterov=True)
             self.model.train()
@@ -344,7 +345,8 @@ class Trainer():
             # if latest is not found then create a model with random weights
             # and use that.
             if not model_paths:
-                create_first_model_with_random_weights(model_dir, len(classes_rgba))
+                create_first_model_with_random_weights(model_dir, len(classes_rgba),
+                                                       int(segment_config['dimensions']))
                 model_paths = model_utils.get_latest_model_paths(model_dir, 1)
         
         start = time.time()
