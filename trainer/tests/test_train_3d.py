@@ -188,9 +188,9 @@ def test_train_struct_seg_heart_patch():
 
 
 @pytest.mark.slow
-def test_train_struct_seg_heart_and_lung_patch():
+def test_train_struct_seg_all_classes_patch():
     """
-    Test training CNN model to predict heart in a single struct seg patch.
+    Test training CNN model to predict all classes in a single struct seg patch.
 
     This test requires the struct seg dataset has been downloaded to the users
     home folder otherwise it will be skipped.
