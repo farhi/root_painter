@@ -73,5 +73,22 @@ def get_metrics(tp:int, fp:int, tn:int, fn:int) -> dict:
         "recall": recall,
         "dice": f1,
         "true_mean": (tp + fn) / total,
-        "true": (tp + fn)
+        "true": (tp + fn),
+        "pred": (fp + tp)
     }
+
+
+
+def metrics_from_val_tile_refs(val_tile_refs):
+    tps = 0 
+    fps = 0 
+    tns = 0
+    fns = 0
+    for ref in val_tile_refs:
+        assert ref[3] is not None, ref
+        (tp, fp, tn, fn) = ref[3]
+        tps += tp
+        fps += fp
+        tns += tn
+        fns += fn
+    return get_metrics(tps, fps, tns, fns)
