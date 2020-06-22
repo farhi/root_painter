@@ -14,39 +14,28 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-
 import torch
 from torch.nn.functional import softmax
 from torch.nn.functional import cross_entropy
 
 
-def dice_loss(class_preds, class_labels):
+def combined_loss(predictions, labels):
+    loss_sum = 0
+    if torch.sum(labels[:, 1]):
+        loss_sum += dice_loss(predictions, labels[:, 1])
+    loss_sum += 0.3 * cross_entropy(predictions, labels[:, 1])
+    return loss_sum
+ 
+
+def dice_loss(predictions, labels):
     """ based on loss function from V-Net paper """
-    assert class_labels.dtype == torch.float32
-    preds = class_preds.contiguous().view(-1)
-    labels = class_labels.view(-1)
+    softmaxed = softmax(predictions, 1)
+    predictions = softmaxed[:, 1, :]  # just the root probability.
+    labels = labels.float()
+    preds = predictions.contiguous().view(-1)
+    labels = labels.view(-1)
     intersection = torch.sum(torch.mul(preds, labels))
     union = torch.sum(preds) + torch.sum(labels)
-    return 1 - ((2 * intersection) / (union))
-
-
-def multiclass_loss(predictions, defined, labels):
-    """ mix of dice and cross entropy """
-    # remove any of the predictions for which we don't have ground truth
-    # Set outputs to 0 where annotation undefined so that
-    # The network can predict whatever it wants without it influencing the penalty
-    for c in range(predictions.shape[1]):
-        predictions[:, c] *= defined
-
-    softmaxed = softmax(predictions, 1)
-    # exclude bg from dice to maintain equivalence with the previous binary loss.
-    fg_classes = [c for c in torch.unique(labels).long() if c > 0]
-    dice_loss_sum = 0
-    if len(fg_classes):
-        for c in fg_classes:
-            class_preds = softmaxed[:, c]
-            class_labels = (labels == c).float()
-            dice_loss_sum += dice_loss(class_preds, class_labels)
-        dice_loss_sum /= len(fg_classes)
-    cx_loss = (0.3 * cross_entropy(predictions, labels))
-    return dice_loss_sum + cx_loss
+    dice = ((2 * intersection) / (union))
+    dice_loss = 1 - dice
+    return dice_loss
