@@ -37,17 +37,18 @@ def get_metric_csv_row(metrics):
     return ','.join([str(p) for p in parts]) + '\n'
 
 
-def get_metrics_from_arrays(y_pred, y_true, class_name):
+def get_metrics_from_arrays(y_pred, y_true):
     y_true = y_true.reshape(-1)
     y_pred = y_pred.reshape(-1)
+    assert len(y_true) == len(y_pred)
     tp = np.sum(np.logical_and(y_pred == 1, y_true == 1))
     tn = np.sum(np.logical_and(y_pred == 0, y_true == 0))
     fp = np.sum(np.logical_and(y_pred == 1, y_true == 0))
     fn = np.sum(np.logical_and(y_pred == 0, y_true == 1))
-    m = get_metrics(tp, fp, tn, fn, class_name)
+    m = get_metrics(tp, fp, tn, fn)
     return m
 
-def get_metrics(tp:int, fp:int, tn:int, fn:int, class_name:str) -> dict:
+def get_metrics(tp:int, fp:int, tn:int, fn:int) -> dict:
     # for the mtrics function in model utils
     assert not np.isnan(tp)
     assert not np.isnan(fp)
@@ -63,7 +64,6 @@ def get_metrics(tp:int, fp:int, tn:int, fn:int, class_name:str) -> dict:
     else: 
         precision = recall = f1 = float('NaN')
     return {
-        "class": class_name,
         "accuracy": accuracy,
         "tp": tp,
         "fp": fp,
