@@ -187,64 +187,6 @@ def test_train_struct_seg_heart_patch():
     assert False, 'Takes too long to fit heart patch'
 
 
-
-@pytest.mark.slow
-def test_train_struct_seg_all_classes_patch():
-    """
-    Test training CNN model to predict all classes in a single struct seg patch.
-
-    This test requires the struct seg dataset has been downloaded to the users
-    home folder otherwise it will be skipped.
-    """
-    data_dir = os.path.join(Path.home(), 'datasets', 'Thoracic_OAR', '1')
-    if not os.path.isdir(data_dir):
-        print('skip test as data not found')
-        return
-
-    cnn = UNet3D(im_channels=1, out_channels=7).cuda() # heart / not heart
-    optimizer = torch.optim.SGD(cnn.parameters(), lr=0.01, momentum=0.99, nesterov=True)
-
-    # get data and heart labels for a patch with the heart in it
-    image_patch, labels_patch = load_heart_patch(data_dir, filter_labels=False)
-    
-    class_names = ['background', 'lungs1', 'lung2',
-                   'heart', 'esophagus', 'trachia', 'spine']
-
-    # Add chanel dimension, I guess this could be useful for multi-modality
-    image_patch = np.expand_dims(image_patch, axis=0)
-
-    # Add batch dimension
-    image_patch = np.expand_dims(image_patch, axis=0)
-    labels_patch_np = np.expand_dims(labels_patch, axis=0)
-
-    # prepare for gpu
-    image_patch = torch.from_numpy(image_patch).cuda().float()
-    labels_patch = torch.from_numpy(labels_patch_np).cuda().long()
-
-    defined = torch.ones(labels_patch.shape).cuda().float()
-
-    for j in range(200):
-        optimizer.zero_grad()
-        outputs = cnn(image_patch)
-        loss = multiclass_loss(outputs, defined, labels_patch)
-        loss.backward()
-        optimizer.step()
-        preds = F.softmax(outputs, 1)[0].detach()
-        class_preds_np = torch.argmax(preds, axis=0).cpu().numpy()
-        dices = [] 
-        for i, class_name in enumerate(class_names):
-            m = get_metrics_from_arrays(class_preds_np==i,
-                                           labels_patch_np==i,
-                                            class_name)
-            dices.append(m['dice'])
-        mean_dice = np.mean(dices)
-        print(f'Fitting patch. {j} loss: {loss.item()}, mean_dice', mean_dice)
-        if mean_dice > 0.7:
-            return
-    assert False, 'Takes too long to fit patch'
-
-
-
 @pytest.mark.slow
 def test_train_struct_seg_heart_from_image():
     """
