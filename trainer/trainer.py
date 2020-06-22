@@ -93,7 +93,8 @@ class Trainer():
                 # new instructions are also made inside
                 self.val_tile_refs = self.get_new_val_tiles_refs()
                 (tps, fps, tns, fns) = self.one_epoch(self.model, 'train', self.val_tile_refs)
-                #m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
+                train_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
+                self.log_metrics('train', train_m) 
             if self.training:
                 self.validation()
             else:
@@ -316,6 +317,19 @@ class Trainer():
                                           self.train_config['dimensions'],
                                           self.in_d, self.out_d)
 
+    def log_metrics(self, name, metrics):
+        fname = datetime.today().strftime('%Y-%m-%d')
+        fname += f'_{name}.csv'
+        fpath = os.path.join(self.train_config['log_dir'], fname)
+        if not os.path.isfile(fpath):
+            # write headers if file didn't exist
+            print('date_time,true_positives,false_positives,true_negatives,'
+                  'false_negatives,precision,recall,dice',
+                  file=open(fpath, 'w+'))
+        with open(fpath, 'a+') as log_file:
+            log_file.write(get_metric_csv_row(metrics))
+            log_file.flush()
+
     def validation(self):
         """ Get validation set loss for current model and previous model.
             log those metrics and update the model if the
@@ -332,7 +346,9 @@ class Trainer():
         # for current model get errors for all tiles in the validation set.
         (tps, fps, tns, fns) = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
         cur_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
+        self.log_metrics('cur_val', get_metrics(tps, fps, tns, fns))
         prev_m = self.get_prev_model_metrics(prev_model)
+        self.log_metrics('prev_val', prev_m))
         was_saved = save_if_better(model_dir, self.model, prev_path,
                                    cur_m['dice'], prev_m['dice'])
         if was_saved:
