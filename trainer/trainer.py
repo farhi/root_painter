@@ -348,7 +348,7 @@ class Trainer():
         cur_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
         self.log_metrics('cur_val', get_metrics(tps, fps, tns, fns))
         prev_m = self.get_prev_model_metrics(prev_model)
-        self.log_metrics('prev_val', prev_m))
+        self.log_metrics('prev_val', prev_m)
         was_saved = save_if_better(model_dir, self.model, prev_path,
                                    cur_m['dice'], prev_m['dice'])
         if was_saved:
