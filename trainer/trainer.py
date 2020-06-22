@@ -33,7 +33,7 @@ import numpy as np
 import torch
 from torch.nn.functional import softmax
 from torch.utils.data import DataLoader
-from loss import multiclass_loss as criterion
+from loss import combined_loss as criterion
 
 from datasets import RPDataset
 from metrics import get_metrics, get_metrics_str, get_metric_csv_row
@@ -41,6 +41,7 @@ from model_utils import ensemble_segment, ensemble_segment_3d
 from model_utils import create_first_model_with_random_weights
 import model_utils
 from model_utils import save_if_better
+from metrics import metrics_from_val_tile_refs
 
 from im_utils import is_image, load_image, save_then_move, load_train_image_and_annot
 import im_utils
@@ -67,8 +68,8 @@ class Trainer():
         total_mem = 0
         for i in range(torch.cuda.device_count()):
             total_mem += torch.cuda.get_device_properties(i).total_memory
-        self.bs = 8 # total_mem // mem_per_item
-        print('Batch size', self.bs)
+        self.batch_size = 4 # total_mem // mem_per_item
+        print('Batch size', self.batch_size)
         self.optimizer = None
         self.val_tile_refs = []
         # used to check for updates
@@ -90,8 +91,9 @@ class Trainer():
             if self.training:
                 # can take a while so checks for
                 # new instructions are also made inside
-                # train_one_epcoh
-                self.one_epoch(self.model, 'train')
+                self.val_tile_refs = self.get_new_val_tiles_refs()
+                (tps, fps, tns, fns) = self.one_epoch(self.model, 'train', self.val_tile_refs)
+                #m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
             if self.training:
                 self.validation()
             else:
@@ -169,12 +171,14 @@ class Trainer():
 
             model_paths = model_utils.get_latest_model_paths(model_dir, 1)
             if model_paths:
-                self.model = model_utils.load_model(model_paths[0], num_classes=len(classes))
+                self.model = model_utils.load_model(model_paths[0], num_classes=len(classes),
+                                                    dimensions=int(self.train_config['dimensions']))
             else:
                 self.model = create_first_model_with_random_weights(model_dir, num_classes=len(classes),
                                                                     dimensions=int(self.train_config['dimensions']))
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01,
                                              momentum=0.99, nesterov=True)
+
             self.model.train()
             self.training = True
 
@@ -208,69 +212,109 @@ class Trainer():
             self.write_message('Training started')
             self.log('Starting Training')
 
-        dataset = None
-        
         if mode == 'val':
             dataset = RPDataset(self.train_config['val_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
                                 self.in_d, self.out_d,
-                                self.train_config['classes'],
-                                'val', self.val_tile_refs)
+                                self.train_config['classes'], 'val',
+                                val_tile_refs)
             torch.set_grad_enabled(False)
+            loader = DataLoader(dataset, self.batch_size * 2, shuffle=True,        
+                                num_workers=16, drop_last=False, pin_memory=True)
+            model.half()
         elif mode == 'train':
             dataset = RPDataset(self.train_config['train_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.in_w, self.out_w,
                                 self.in_d, self.out_d,
-                                self.train_config['classes'], 'train')
-
+                                self.train_config['classes'], 'train',
+                                val_tile_refs)
             torch.set_grad_enabled(True)
+            loader = DataLoader(dataset, self.batch_size, shuffle=False, num_workers=16,
+                                drop_last=False, pin_memory=True)
+            model.float()
+            model.train()
         else:
             raise Exception(f"Invalid mode: {mode}")
         
-
-        loader = DataLoader(dataset, self.bs, shuffle=(mode=='train'), num_workers=12,
-                            drop_last=False, pin_memory=True)
-
-
         epoch_start = time.time()
-        if mode == 'train':
-            model.train()
 
-        tps = 0
-        fps = 0
-        tns = 0
-        fns = 0
-        defined_total = 0
-        loss_sum = 0
+        tps = []
+        fps = []
+        tns = []
+        fns = []
+
         for step, (im_tiles,
                    target_tiles,
                    defined_tiles) in enumerate(loader):
+
             self.check_for_instructions()
             im_tiles = im_tiles.cuda()
-            target_tiles = target_tiles.cuda()
             defined_tiles = defined_tiles.cuda()
+            target_tiles = target_tiles.cuda()
             self.optimizer.zero_grad()
-            outputs = model(im_tiles)
 
-            loss = criterion(outputs, defined_tiles, target_tiles)
+            if mode == 'val':
+                im_tiles = im_tiles.half()
+
+            outputs = model(im_tiles)
+            outputs[:, 0] *= defined_tiles
+            outputs[:, 1] *= defined_tiles
+    
+            loss = criterion(outputs, target_tiles)
+            softmaxed = softmax(outputs, 1)
+            # just the foreground probability.
+            foreground_preds = softmaxed[:, 1] > 0.5
+
+            # we only want to calculate metrics on the
+            # part of the predictions for which annotations are defined
+            # so remove all predictions and foreground labels where
+            # we didn't have any annotation.
+
+            for batch_index in range(defined_tiles.shape[0]):
+                defined_list = defined_tiles[batch_index].view(-1)
+                preds_list = foreground_preds[batch_index].view(-1)[defined_list > 0]
+                foregrounds_list = target_tiles[batch_index, 1].reshape(-1)[defined_list > 0]
+
+                # # calculate all the false positives, false negatives etc
+                tps.append(torch.sum((foregrounds_list == 1) * (preds_list == 1)).cpu().numpy())
+                tns.append(torch.sum((foregrounds_list == 0) * (preds_list == 0)).cpu().numpy())
+                fps.append(torch.sum((foregrounds_list == 0) * (preds_list == 1)).cpu().numpy())
+                fns.append(torch.sum((foregrounds_list == 1) * (preds_list == 0)).cpu().numpy())
 
             if mode == 'train':            
                 loss.backward()
                 self.optimizer.step()
+                print(f'{time.time()},{loss.item()}', file=open('losses.txt', 'a'))
+            
+            if mode == 'train':
+                sys.stdout.write(f"{mode} {(step+1) * self.batch_size}/"
+                                 f"{len(loader.dataset)} "
+                                 f" loss={round(loss.item(), 3)} \r")
 
-            loss_sum += loss.item() # float
-
-            sys.stdout.write(f"{mode} {(step+1) * self.bs}/"
-                             f"{len(loader.dataset)} "
-                             f" loss={round(loss.item(), 3)} \r")
             self.check_for_instructions() # could update training parameter
             if not self.training: # in this context we consider validation part of training.
                 return
+
         duration = round(time.time() - epoch_start, 3)
         print(f'{mode} epoch duration', duration)
-        return loss_sum
+
+        return [tps, fps, tns, fns]
+
+    def assign_metrics_to_refs(self, tps, fps, tns, fns):
+        # now go through and assign the errors to the appropriate tile refs.
+        for i, (tp, fp, tn, fn) in enumerate(zip(tps, fps, tns, fns)):
+            # go through the val tile refs to find the equivalent tile ref
+            self.val_tile_refs[i][3] = [tp, fp, tn, fn]
+
+
+    def get_new_val_tiles_refs(self):
+        return im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
+                                          copy.deepcopy(self.val_tile_refs),
+                                          self.in_w, self.out_w,
+                                          self.train_config['dimensions'],
+                                          self.in_d, self.out_d)
 
     def validation(self):
         """ Get validation set loss for current model and previous model.
@@ -284,19 +328,17 @@ class Trainer():
         prev_model, prev_path = model_utils.get_prev_model(model_dir,
                                                            len(self.train_config['classes']),
                                                            dims=self.train_config['dimensions'])
-        self.val_tile_refs = im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
-                                                        copy.deepcopy(self.val_tile_refs),
-                                                        self.in_w, self.out_w,
-                                                        self.train_config['dimensions'],
-                                                        self.in_d, self.out_d)
-
-        cur_loss = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
-        start = time.time()
-        prev_loss = self.one_epoch(prev_model, 'val', self.val_tile_refs)
-        print('prev loss duration', time.time() - start)
-
+        self.val_tile_refs = self.get_new_val_tiles_refs()
+        # for current model get errors for all tiles in the validation set.
+        (tps, fps, tns, fns) = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
+        cur_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
+        prev_m = self.get_prev_model_metrics(prev_model)
         was_saved = save_if_better(model_dir, self.model, prev_path,
-                                   cur_loss, prev_loss)
+                                   cur_m['dice'], prev_m['dice'])
+        if was_saved:
+            # update the cache to use metrics from current model
+            self.assign_metrics_to_refs(tps, fps, tns, fns)
+
         if was_saved:
             self.epochs_without_progress = 0
         else:
@@ -307,7 +349,6 @@ class Trainer():
         message = (f'Training {self.epochs_without_progress}'
                    f' of max {self.max_epochs_without_progress}'
                    ' epochs without progress')
-        print(message)
         self.write_message(message)
         if self.epochs_without_progress >= self.max_epochs_without_progress:
             message = (f'Training finished as {self.epochs_without_progress}'
@@ -359,6 +400,7 @@ class Trainer():
                 model_paths = model_utils.get_latest_model_paths(model_dir, 1)
         
         start = time.time()
+
         for fname in fnames:
             self.segment_file(in_dir, seg_dir, fname,
                               model_paths, classes_rgba,
@@ -366,12 +408,47 @@ class Trainer():
         duration = time.time() - start
         print(f'Seconds to segment {len(fnames)} images: ', round(duration, 3))
 
+
+    def get_prev_model_metrics(self, prev_model, use_cache=True):
+        # for previous model get errors for all tiles which do not yet have metrics
+        refs_to_compute = []
+
+        if use_cache:
+            # for each val tile
+            for t in self.val_tile_refs:
+                if t[3] == None:
+                    refs_to_compute.append(t)
+        else:
+            refs_to_compute = self.val_tile_refs
+        
+        print('computing prev model metrics for ', len(refs_to_compute), 'out of', len(self.val_tile_refs))
+        # if it is missing metrics then add it to refs_to_compute
+        # then compute the errors for these tile refs 
+        if refs_to_compute:
+            (tps, fps, tns, fns) = self.one_epoch(prev_model, 'val', refs_to_compute)
+            assert len(tps) == len(fps) == len(tns) == len(fns) == len(refs_to_compute)
+
+            # now go through and assign the errors to the appropriate tile refs.
+            for tp, fp, tn, fn, computed_ref in zip(tps, fps, tns, fns, refs_to_compute):
+                # go through the val tile refs to find the equivalent tile ref
+                for i, ref in enumerate(self.val_tile_refs):
+                    if ref[0] == computed_ref[0] and ref[1] == computed_ref[1]:
+                        if use_cache:
+                            assert self.val_tile_refs[i][3] ==  None, self.val_tile_refs[i][3]
+                            assert ref[3] == None
+                        ref[3] = [tp, fp, tn, fn]
+                        assert self.val_tile_refs[i][3] is not None
+        
+        prev_m = metrics_from_val_tile_refs(self.val_tile_refs)
+        return prev_m
+
+
     def segment_file(self, in_dir, seg_dir, fname,
                      model_paths, classes_rgba, sync_save):
         fpath = os.path.join(in_dir, fname)
 
         # Segmentations are always saved as PNG for 2d or nifty for 3d
-        if fname.endswith('.nii.gz'): 
+        if fname.endswith('.nii.gz'):
             out_path = os.path.join(seg_dir, fname)
         else:
             out_path = os.path.join(seg_dir, os.path.splitext(fname)[0] + '.png')
@@ -397,17 +474,12 @@ class Trainer():
             seg_start = time.time()
             if dims == 2:
                 # rgba
-                segmented = ensemble_segment(model_paths, im, self.bs,
+                segmented = ensemble_segment(model_paths, im, self.batch_size,
                                              self.in_w, self.out_w, classes_rgba)
             elif dims == 3:
-                in_d = 64
-                out_d = 18
-                in_w = 312
-                out_w = 274
-                bs = 2
-                segmented = ensemble_segment_3d(model_paths, im, bs,
-                                                in_w, out_w, in_d,
-                                                out_d, classes_rgba)
+                segmented = ensemble_segment_3d(model_paths, im, self.batch_size,
+                                                self.in_w, self.out_w, self.in_d,
+                                                self.out_d, len(classes_rgba))
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
