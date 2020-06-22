@@ -26,12 +26,10 @@ import torch
 import torch.nn.functional as F
 import pytest
 
-
 from unet3d import UNet3D
 import im_utils
 from metrics import get_metrics_from_arrays, get_metrics_str, get_metric_csv_row
 from loss import multiclass_loss 
-
 
 
 @pytest.mark.slow
@@ -259,10 +257,9 @@ def test_train_struct_seg_heart_from_image():
     if not os.path.isdir(data_dir):
         print('skip test as data not found')
         return
-
+    
     # create a temporary sync dir
     sync_dir = os.path.join('/tmp', 'test_sync_dir')
-
     if os.path.isdir(sync_dir):    
         shutil.rmtree(sync_dir)
     os.makedirs(sync_dir)
@@ -282,15 +279,54 @@ def test_train_struct_seg_heart_from_image():
     # create a dataset containing a single image
     image, _ = im_utils.load_image(os.path.join(data_dir, 'data.nii.gz'))
     annot, _ = im_utils.load_image(os.path.join(data_dir, 'label.nii.gz'))
+   
+    # Eventually we will have two channels for each struture.
+    # it could work like this.
+    # channel 0 = not heart
+    # channel 1 = heart 
+    # channel 2 = not lungs
+    # channel 3 = lungs
+    # channel 4 = not esophagus
+    # channel 5 = esophagus
 
-    # we know it is a label because it is in the annot folder
-    target = os.path.join(annot_dir, 'data.nii.gz') 
-    annot = (annot == 3).astype(np.int16) # only heart labels this time.
-    im_utils.save_nifty(target, annot)
+    # This is required to allow the user to specify corrections for each
+    # structure each channel is a binary map. 0 or 1. Indicating the specific
+    # locations where annotation has been defined. For now we will start with
+    # just the heart.
 
-    # also save the image in the datasets folder
-    target = os.path.join(dataset_dir, 'data.nii.gz') 
-    im_utils.save_nifty(target, image)
+    # So
+    # channel 0 = not heart
+    # channel 1 = heart
+
+    # The struct seg dataset has a large class imblance, with the heart
+    # occupying less than 0.7% of the image.  This poses challenges to training
+    # that will not occur during corrective annotation as the protocol
+    # specifies that the user will aim to label no more than 5 to 10 times as
+    # much background as foreground for each structure.
+ 
+    heart = (annot == 3).astype(np.int16) # only heart labels this time.
+    not_heart = (annot != 3).astype(np.int16) # only heart labels this time.
+    heart_locations = np.argwhere(heart > 0)
+    min_z = np.min(heart_locations[:, 0])
+    min_y = np.min(heart_locations[:, 1])
+    min_x = np.min(heart_locations[:, 2])
+    max_z = np.max(heart_locations[:, 0])
+    max_y = np.max(heart_locations[:, 1])
+    max_x = np.max(heart_locations[:, 2])
+    # set no-heart region to be a cube around the heart
+    heart_cube_mask = np.zeros(heart.shape)
+    heart_cube_mask[min_z-0:max_z+0,
+                    min_y-100:max_y+100,
+                    min_x-100:max_x+100] = 1
+    # anything outside the heart cube is set to 0
+    not_heart *= heart_cube_mask.astype(np.int16)
+    annot = np.stack((not_heart, heart))
+    annot_byte = annot.astype(np.byte) # reduce size from 100mb to 50mb
+    annot_path = os.path.join(annot_dir, '01.npy')
+    np.save(annot_path, annot_byte)
+
+    image_path = os.path.join(dataset_dir, '01.npy')
+    np.save(image_path, image)
 
     # send a 'start_training' instruction
     content = {
@@ -300,18 +336,16 @@ def test_train_struct_seg_heart_from_image():
         "train_annot_dir": annot_dir,
         "message_dir": message_dir,
         "dimensions": 3,
-        "classes": [('bg', [0,180,0,0], 'w'),
-                    ('heart', [1, 0, 255, 255], '1')]
+        "classes": ['heart'] # output channels of the network will be 0:heart, 1:not_heart
     }
     hash_str = '_' + str(hash(json.dumps(content)))
     fpath = os.path.join(instruction_dir, 'start_training' + hash_str)
     with open(fpath, 'w') as json_file:
         json.dump(content, json_file, indent=4)
- 
     trainer = Trainer(sync_dir)
     trainer.bs = 2
-
     trainer.main_loop()
+
     # tell the trainer to check for instructions
     #trainer.check_for_instructions()
     
@@ -319,9 +353,6 @@ def test_train_struct_seg_heart_from_image():
     # ensure the dice for all structure is 0.9 or higher.
     # end test
     assert False, 'Takes too long to fit patch'
-
-
-
 
 
 # pylint: disable=W0105 # string has no effect
