@@ -36,7 +36,7 @@ def is_image(fname):
     """ extensions that have been tested with so far """
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff'}
     fname_ext = os.path.splitext(fname)[1].lower()
-    return fname_ext in extensions or fname.endswith('.nii.gz')
+    return fname_ext in extensions or fname.endswith('.nii.gz') or fname.endswith('.npy')
 
 def normalize_tile(tile):
     if np.min(tile) < np.max(tile):
@@ -44,6 +44,7 @@ def normalize_tile(tile):
     assert np.min(tile) >= 0, f"tile min {np.min(tile)}"
     assert np.max(tile) <= 1, f"tile max {np.max(tile)}"
     return tile
+
 
 def load_train_image_and_annot(dataset_dir, train_annot_dir):
     max_attempts = 60
@@ -61,10 +62,10 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
             fname = random.sample(fnames, 1)[0]
             annot_path = os.path.join(train_annot_dir, fname)
             dims = 2
-
-            if fname.endswith('.nii.gz'):
+            if fname.endswith('.npy'):
                 image, _ = load_image(os.path.join(dataset_dir, fname))
-                annot, _ = load_image(annot_path)
+                image = np.load(os.path.join(dataset_dir, fname), mmap_mode='c')
+                annot = np.load(annot_path, mmap_mode='c')
                 dims = 3
             else:
                 image_path_part = os.path.join(dataset_dir,
@@ -79,6 +80,7 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
             # also return fname for debugging purposes.
             return image, annot, fname, dims
         except Exception as e:
+            raise e
             # This could be due to an empty annotation saved by the user.
             # Which happens rarely due to deleting all labels in an 
             # existing annotation and is not a problem.
@@ -270,28 +272,38 @@ def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
         # we only want to validate on annotation tiles
         # which have annotation information.
         if np.sum(annot_tile):
-            new_file_refs.append([annot_fname, [x, y], mtime])
+            # fname, [x, y], mtime, metrics i.e [tp, tn, fp, fn]
+            new_file_refs.append([annot_fname, [x, y], mtime, None])
     return new_file_refs
 
 def get_val_tile_refs_for_annot_3d(annot_dir, annot_fname, in_w, out_w, in_d, out_d):
+    """
+    Each element of tile_refs is a list that includes:
+        * image file name (string) - for loading the image from disk during validation 
+        * coord (x int, y int) - for addressing the location within the padded image
+        * annot_mtime (int)
+        * cached performance for this tile with previous (current best) model.
+          Initialized to None but otherwise [tp, fp, tn, fn]
+    """
     width_diff = in_w - out_w
     pad_width = width_diff // 2
     annot_path = os.path.join(annot_dir, annot_fname)
-    annot, dims = load_image(annot_path)
+    annot = np.load(annot_path, mmap_mode='c')
     new_file_refs = []
-    annot_path = os.path.join(annot_dir, annot_fname)
-    padded_im_shape = annot.shape
+    annot_shape = annot.shape[1:]
     out_tile_shape = (out_w, out_w)
-    coords = get_coords_3d(padded_im_shape, annot.shape,
+    coords = get_coords_3d(annot_shape, annot_shape,
                             in_tile_shape=(in_d, in_w, in_w),
                             out_tile_shape=(out_d, out_w, out_w))
+
     mtime = os.path.getmtime(annot_path)
     for (x, y, z) in coords:
-        annot_tile = annot[z:z+out_d, y:y+out_w, x:x+out_w]
+        annot_tile = annot[:, z:z+out_d, y:y+out_w, x:x+out_w]
         # we only want to validate on annotation tiles
         # which have annotation information.
         if np.sum(annot_tile):
-            new_file_refs.append([annot_fname, [x, y, z], mtime])
+            # fname, [x, y, z], mtime, prev model metrics i.e [tp, tn, fp, fn] or None
+            new_file_refs.append([annot_fname, [x, y, z], mtime, None])
     return new_file_refs
 
 
@@ -382,19 +394,10 @@ def save_then_move(out_path, seg, dims):
     shutil.move(temp_path, out_path)
 
 
-def save_nifty(image_path, im):
-    assert len(im.shape) == 3
-    im = np.moveaxis(im, 0, -1) # depth moved to the end.
-    img = nib.Nifti1Image(im, np.eye(4))
-    img.to_filename(image_path)
-
-
 def load_image(image_path):
     dims = None
-    if image_path.endswith('.nii.gz'):
-        image = nib.load(image_path)
-        image = np.array(image.dataobj)
-        image = np.moveaxis(image, -1, 0) # depth moved to beginning
+    if image_path.endswith('.npy'):
+        image = np.load(image_path, mmap_mode='c')
         dims = 3
     else:
         dims = 2
@@ -410,4 +413,5 @@ def load_image(image_path):
     # TODO: train directly on B/W instead of doing this conversion.
     if len(image.shape) == 2:
         image = color.gray2rgb(image)
+
     return image, dims
