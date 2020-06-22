@@ -346,7 +346,7 @@ class Trainer():
         # for current model get errors for all tiles in the validation set.
         (tps, fps, tns, fns) = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
         cur_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
-        self.log_metrics('cur_val', get_metrics(tps, fps, tns, fns))
+        self.log_metrics('cur_val', cur_m)
         prev_m = self.get_prev_model_metrics(prev_model)
         self.log_metrics('prev_val', prev_m)
         was_saved = save_if_better(model_dir, self.model, prev_path,
