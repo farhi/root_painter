@@ -54,6 +54,7 @@ class Trainer():
         self.sync_dir = sync_dir
         self.instruction_dir = os.path.join(self.sync_dir, 'instructions')
         self.training = False
+        self.running = False
         self.train_set = None
         # Can be set by instructions.
         self.train_config = None
@@ -76,6 +77,7 @@ class Trainer():
         self.annot_mtimes = []
         self.msg_dir = None
         self.epochs_without_progress = 0
+
         # approx 30 minutes
         self.max_epochs_without_progress = 60
         # These can be trigged by data sent from client
@@ -83,10 +85,11 @@ class Trainer():
                                    self.segment,
                                    self.stop_training]
 
-    def main_loop(self):
+    def main_loop(self, on_epoch_end=None):
         print('Started main loop. Checking for instructions in',
               self.instruction_dir)
-        while True:
+        self.running = True
+        while self.running:
             self.check_for_instructions()
             if self.training:
                 # can take a while so checks for
@@ -97,6 +100,8 @@ class Trainer():
                 self.log_metrics('train', train_m) 
             if self.training:
                 self.validation()
+                if on_epoch_end:
+                    on_epoch_end()
             else:
                 self.first_loop = True
                 time.sleep(1.0)
@@ -337,7 +342,6 @@ class Trainer():
             Also stop training if the current model hasnt
             beat the previous model for {max_epochs}
         """
-        print('validation')
         model_dir = self.train_config['model_dir']
         prev_model, prev_path = model_utils.get_prev_model(model_dir,
                                                            len(self.train_config['classes']),
