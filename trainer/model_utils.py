@@ -40,11 +40,11 @@ def get_latest_model_paths(model_dir, k):
     return fpaths
 
 
-def load_model(model_path, num_classes, dims):
-    if dims == 2:
+def load_model(model_path, num_classes, dimensions):
+    if dimensions == 2:
         model = UNetGNRes(out_channels=num_classes)
     else:
-        model = UNet3D(im_channels=1, out_channels=num_classes)
+        model = UNet3D(im_channels=1, out_channels=num_classes*2)
     try:
         model.load_state_dict(torch.load(model_path))
         model = torch.nn.DataParallel(model)
@@ -59,10 +59,12 @@ def create_first_model_with_random_weights(model_dir, num_classes, dimensions):
     model_num = 1
     model_name = str(model_num).zfill(6)
     model_name += '_' + str(int(round(time.time()))) + '.pkl'
+    # num out channels is twice number of channels
+    # as we have a positive and negative output for each structure.
     if dimensions == 2:
-        model = UNetGNRes(out_channels=num_classes)
+        model = UNetGNRes(out_channels=num_classes*2)
     elif dimensions == 3:
-        model = UNet3D(im_channels=1, out_channels=num_classes)
+        model = UNet3D(im_channels=1, out_channels=num_classes*2)
     else:
         raise Exception(f"Unhandled dimensions {dimensions}")
 
@@ -152,17 +154,16 @@ def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
 
 
 
-def save_if_better(model_dir, cur_model, prev_model_path,
-                   cur_loss, prev_loss):
+def save_if_better(model_dir, cur_model, prev_model_path, cur_dice, prev_dice):
 
     # convert the nans as they don't work in comparison
-    if math.isnan(cur_loss):
+    if math.isnan(cur_dice):
         cur_loss = 0
-    if math.isnan(prev_loss):
+    if math.isnan(prev_dice):
         prev_loss = 0
-    print('prev loss', str(round(prev_loss, 5)).ljust(7, '0'),
-          'cur loss', str(round(cur_loss, 5)).ljust(7, '0'))
-    if cur_loss < prev_loss:
+    print('prev dice', str(round(prev_dice, 5)).ljust(7, '0'),
+          'cur dice', str(round(cur_dice, 5)).ljust(7, '0'))
+    if cur_dice > prev_dice:
         prev_model_fname = os.path.basename(prev_model_path)
         prev_model_num = int(prev_model_fname.split('_')[0])
         model_num = prev_model_num + 1
@@ -196,13 +197,13 @@ def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshol
 
 
 def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
-                        out_d, classes_rgba, threshold=0.5):
+                        out_d, num_classes, threshold=0.5):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
     pred_count = 0
     # then add predictions from the previous models to form an ensemble
     for model_path in model_paths:
-        cnn = load_model(model_path, len(classes_rgba), dims=3)
+        cnn = load_model(model_path, num_classes, dimensions=3)
         cnn.half()
         preds = segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d)
         if pred_sum is not None:
