@@ -276,7 +276,7 @@ def test_train_struct_seg_heart_from_image():
               model_dir, seg_dir, annot_dir, message_dir]:
         os.makedirs(d)
 
-    # create a dataset containing a single image
+    # Create a dataset containing a single image
     image, _ = im_utils.load_image(os.path.join(data_dir, 'data.nii.gz'))
     annot, _ = im_utils.load_image(os.path.join(data_dir, 'label.nii.gz'))
    
