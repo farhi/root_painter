@@ -25,11 +25,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import pytest
+import nibabel as nib
 
 from unet3d import UNet3D
 import im_utils
 from metrics import get_metrics_from_arrays, get_metrics_str, get_metric_csv_row
-from loss import multiclass_loss 
 
 
 @pytest.mark.slow
@@ -117,14 +117,21 @@ def test_train_identity_from_random():
     assert False, 'test took too long'
 
 
+def load_nifty(image_path):
+    image = nib.load(image_path)
+    image = np.array(image.dataobj)
+    image = np.moveaxis(image, -1, 0) # depth moved to beginning
+    return image
+
+
 
 def load_heart_patch(data_dir, filter_labels=True):
     """ Load a heart from the struct seg data.
         Include binary (0,1) labels for the voxels which contain the heart.
         Return a patch small enough to fit on the GPU (56, 240, 240)
     """
-    image, _ = im_utils.load_image(os.path.join(data_dir, 'data.nii.gz'))
-    annot, _ = im_utils.load_image(os.path.join(data_dir, 'label.nii.gz'))
+    image = load_nifty(os.path.join(data_dir, 'data.nii.gz'))
+    annot = load_nifty(os.path.join(data_dir, 'label.nii.gz'))
 
     image_patch = image[12:12+56, 150:150+240, 150:150+240]
     annot_patch = annot[12:12+56, 150:150+240, 150:150+240]
@@ -219,8 +226,8 @@ def test_train_struct_seg_heart_from_image():
         os.makedirs(d)
 
     # Create a dataset containing a single image
-    image, _ = im_utils.load_image(os.path.join(data_dir, 'data.nii.gz'))
-    annot, _ = im_utils.load_image(os.path.join(data_dir, 'label.nii.gz'))
+    image = load_nifty(os.path.join(data_dir, 'data.nii.gz'))
+    annot = load_nifty(os.path.join(data_dir, 'label.nii.gz'))
    
     # Eventually we will have two channels for each struture.
     # it could work like this.
@@ -274,6 +281,7 @@ def test_train_struct_seg_heart_from_image():
     content = {
         "dataset_dir": dataset_dir,
         "model_dir": model_dir, 
+        "log_dir": sync_dir,
         "val_annot_dir": annot_dir,
         "train_annot_dir": annot_dir,
         "message_dir": message_dir,
