@@ -26,6 +26,10 @@ import torch
 import torch.nn.functional as F
 import pytest
 import nibabel as nib
+import threading
+import time
+import glob
+
 
 from unet3d import UNet3D
 import im_utils
@@ -273,7 +277,6 @@ def test_train_struct_seg_heart_from_image():
     annot_byte = annot.astype(np.byte) # reduce size from 100mb to 50mb
     annot_path = os.path.join(annot_dir, '01.npy')
     np.save(annot_path, annot_byte)
-
     image_path = os.path.join(dataset_dir, '01.npy')
     np.save(image_path, image)
 
@@ -293,17 +296,21 @@ def test_train_struct_seg_heart_from_image():
     with open(fpath, 'w') as json_file:
         json.dump(content, json_file, indent=4)
     trainer = Trainer(sync_dir)
-    trainer.bs = 2
-    trainer.main_loop()
-
-    # tell the trainer to check for instructions
-    #trainer.check_for_instructions()
-    
-    # check the metrics on this image
-    # ensure the dice for all structure is 0.9 or higher.
-    # end test
-    assert False, 'Takes too long to fit patch'
-
+    def on_epoch_end():
+        print('epoch end')
+        fnames = os.listdir(sync_dir)
+        fnames = [f for f in fnames if f.endswith('cur_val.csv')]
+        if fnames:
+            fpath = os.path.join(sync_dir, fnames[0])
+            lines = open(fpath).readlines()
+            for l in lines[1:]:
+                print(float(l.split(',')[-1]))
+                if float(l.split(',')[-1]) > 0.7:
+                    print('pass')
+                    trainer.running = False
+                    return
+            assert len(lines) < 10, 'takes too long to fit patch'
+    trainer.main_loop(on_epoch_end)
 
 # pylint: disable=W0105 # string has no effect
 # pylint: disable=C0301 # line too long
