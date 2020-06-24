@@ -222,10 +222,10 @@ class RPDataset(Dataset):
             # 3d augmentation isn't implemented yet but
             # Annotion is cropped post augmentation to ensure
             # elastic grid doesn't remove the edges.
-            annot_tile_center = annot_tile[:,
-                                           pad_depth:-pad_depth,
-                                           pad_width:-pad_width,
-                                           pad_width:-pad_width]
+            annot_tile = annot_tile[:,
+                                    pad_depth:-pad_depth,
+                                    pad_width:-pad_width,
+                                    pad_width:-pad_width]
         assert np.sum(annot_tile) > 0, 'annot tile should contain annotation'
         assert annot_tile.shape[1:] == (self.out_d, self.out_w, self.out_w), (
             f" shape is {annot_tile.shape}")
