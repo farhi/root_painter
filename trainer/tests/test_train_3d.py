@@ -305,7 +305,7 @@ def test_train_struct_seg_heart_from_image():
             lines = open(fpath).readlines()
             for l in lines[1:]:
                 print(float(l.split(',')[-1]))
-                if float(l.split(',')[-1]) > 0.7:
+                if float(l.split(',')[-1]) > 0.6:
                     print('pass')
                     trainer.running = False
                     return
