@@ -16,8 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 # pylint: disable=E0401 # import error
-from loss import combined_loss
 import torch
+from loss import combined_loss
 
 
 def test_low_loss_when_matching_labels():
