@@ -37,7 +37,7 @@ from loss import combined_loss as criterion
 
 from datasets import RPDataset
 from metrics import get_metrics, get_metrics_str, get_metric_csv_row
-from model_utils import ensemble_segment, ensemble_segment_3d
+from model_utils import ensemble_segment_2d, ensemble_segment_3d
 from model_utils import create_first_model_with_random_weights
 import model_utils
 from model_utils import save_if_better
@@ -60,11 +60,8 @@ class Trainer():
         self.train_config = None
         self.model = None
         self.first_loop = True
-    
-        self.in_w = 240
-        self.out_w = 194
-        self.in_d = 56
-        self.out_d = 18
+
+
         mem_per_item = 3800000000
         total_mem = 0
         for i in range(torch.cuda.device_count()):
@@ -105,6 +102,34 @@ class Trainer():
             else:
                 self.first_loop = True
                 time.sleep(1.0)
+
+
+    def add_config_shape(self, config):
+        new_config = copy.deepcopy(config)
+
+        # Assume 2 if dimensions not defined.
+        # We may want to maintain compatability with older (2D only) clients.
+        if 'dimensions' not in config:
+            config['dimensions'] = 2
+
+        # for now we will have defaults for either 2d or 3d
+        # we may want to allow the user to specify this or adapt based
+        # on image dimensions, hardware capabilities and batch size
+        if config['dimensions'] == 2:
+            # 2D defaults to 3 channels, but this is not the same as depth
+            new_config['in_w'] = 572
+            new_config['out_w'] = 500
+            new_config['in_d'] = 1
+            new_config['out_d'] = 1
+        elif config['dimensions'] == 3:
+            new_config['in_w'] = 240
+            new_config['out_w'] = 194
+            new_config['in_d'] = 56
+            new_config['out_d'] = 18
+        else:
+            raise Exception('Unhandled config dimensions' + str(config['dimensions']))
+        return new_config
+
 
     def fix_config_paths(self, old_config):
         """ get paths relative to local machine """
@@ -174,6 +199,7 @@ class Trainer():
             self.msg_dir = self.train_config['message_dir']
             model_dir = self.train_config['model_dir']
             classes = self.train_config['classes']
+            self.train_config = self.add_config_shape(self.train_config)
 
             model_paths = model_utils.get_latest_model_paths(model_dir, 1)
             if model_paths:
@@ -221,8 +247,10 @@ class Trainer():
         if mode == 'val':
             dataset = RPDataset(self.train_config['val_annot_dir'],
                                 self.train_config['dataset_dir'],
-                                self.in_w, self.out_w,
-                                self.in_d, self.out_d,
+                                self.train_config['in_w'],
+                                self.train_config['out_w'],
+                                self.train_config['in_d'],
+                                self.train_config['out_d'],
                                 self.train_config['classes'], 'val',
                                 val_tile_refs)
             torch.set_grad_enabled(False)
@@ -232,8 +260,10 @@ class Trainer():
         elif mode == 'train':
             dataset = RPDataset(self.train_config['train_annot_dir'],
                                 self.train_config['dataset_dir'],
-                                self.in_w, self.out_w,
-                                self.in_d, self.out_d,
+                                self.train_config['in_w'],
+                                self.train_config['out_w'], 
+                                self.train_config['in_d'], 
+                                self.train_config['out_d'], 
                                 self.train_config['classes'], 'train',
                                 val_tile_refs)
             torch.set_grad_enabled(True)
@@ -318,9 +348,11 @@ class Trainer():
     def get_new_val_tiles_refs(self):
         return im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
                                           copy.deepcopy(self.val_tile_refs),
-                                          self.in_w, self.out_w,
+                                          self.train_config['in_w'],
+                                          self.train_config['out_w'],
                                           self.train_config['dimensions'],
-                                          self.in_d, self.out_d)
+                                          self.train_config['in_d'],
+                                          self.train_config['out_d'])
 
     def log_metrics(self, name, metrics):
         fname = datetime.today().strftime('%Y-%m-%d')
@@ -400,6 +432,8 @@ class Trainer():
         in_dir = segment_config['dataset_dir']
         seg_dir = segment_config['seg_dir']
         classes_rgba = [c[1] for c in segment_config['classes']]
+        segment_config = self.add_config_shape(segment_config)
+
         if "file_names" in segment_config:
             fnames = segment_config['file_names']
         else:
@@ -424,6 +458,8 @@ class Trainer():
         for fname in fnames:
             self.segment_file(in_dir, seg_dir, fname,
                               model_paths, classes_rgba,
+                              in_w = segment_config['in_w'],
+                              out_w = segment_config['out_w'],
                               sync_save=len(fnames) == 1)
         duration = time.time() - start
         print(f'Seconds to segment {len(fnames)} images: ', round(duration, 3))
@@ -463,8 +499,7 @@ class Trainer():
         return prev_m
 
 
-    def segment_file(self, in_dir, seg_dir, fname,
-                     model_paths, classes_rgba, sync_save):
+    def segment_file(self, in_dir, seg_dir, fname, model_paths, classes_rgba, in_w, out_w, sync_save):
         fpath = os.path.join(in_dir, fname)
 
         # Segmentations are always saved as PNG for 2d or nifty for 3d
@@ -488,18 +523,18 @@ class Trainer():
             
             # if input is smaller than this, behaviour is unpredictable.
             if dims == 2:
-                if im.shape[0] < self.in_w or im.shape[1] < self.in_w:
+                if im.shape[0] < in_w or im.shape[1] < in_w:
                     raise Exception(f"image {fname} too small to segment. Width "
-                                    f" and height must be at least {self.in_w}")
+                                    f" and height must be at least {in_w}")
             seg_start = time.time()
             if dims == 2:
                 # rgba
-                segmented = ensemble_segment(model_paths, im, self.batch_size,
-                                             self.in_w, self.out_w, classes_rgba)
+                segmented = ensemble_segment_2d(model_paths, im, self.batch_size,
+                                             in_w, out_w, classes_rgba)
             elif dims == 3:
                 segmented = ensemble_segment_3d(model_paths, im, self.batch_size,
-                                                self.in_w, self.out_w, self.in_d,
-                                                self.out_d, len(classes_rgba))
+                                                in_w, out_w, in_d,
+                                                out_d, len(classes_rgba))
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
