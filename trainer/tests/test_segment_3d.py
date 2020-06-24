@@ -63,7 +63,7 @@ def test_CNN_segment_classes_3D_9_classes():
     assert output.shape[1] == num_classes
 
 
-#@pytest.mark.slow
+@pytest.mark.slow
 def test_segment_large_3D_image(monkeypatch):
     """ Test that the segmentation method reconstructs the output properly """
 
@@ -91,7 +91,6 @@ def test_segment_large_3D_image(monkeypatch):
     monkeypatch.setattr(im_utils, "normalize_tile", mock_normalize_tile)
     depth = 96
     test_input = np.random.rand(depth, 512, 512) # depth, height, width
-    #test_input = np.expand_dims(test_input, axis=0) # batch dimension
     in_w = 312
     out_w = 274
     in_d = 64
