@@ -18,7 +18,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 from pathlib import Path
 import json
-import shutil
 
 import numpy as np
 import torch
@@ -29,6 +28,7 @@ import nibabel as nib
 from trainer import Trainer
 from unet3d import UNet3D
 from metrics import get_metrics_from_arrays
+from test_utils import create_tmp_sync_dir
 
 
 @pytest.mark.slow
@@ -198,23 +198,6 @@ def test_train_struct_seg_heart_patch():
     assert False, 'Takes too long to fit heart patch'
 
 
-def create_tmp_sync_dir():
-    """ create a temporary sync dir
-        delete if it already exists
-        and return useful paths
-    """
-    sync_dir = os.path.join('/tmp', 'test_sync_dir')
-    if os.path.isdir(sync_dir):
-        shutil.rmtree(sync_dir)
-    os.makedirs(sync_dir)
-    # create an instructions folder, models folder, dataset folder
-    # and a segmentation folder inside the sync_directory
-    dnames = ['instructions', 'dataset', 'seg',
-              'models', 'annots', 'messages']
-    for dname in dnames:
-        os.makedirs(os.path.join(sync_dir, dname))
-    return sync_dir
-
 def send_training_instruction(sync_dir):
     """ send a 'start_training' instruction """
     instruction_dir = os.path.join(sync_dir, 'instructions')
@@ -306,7 +289,7 @@ def test_train_struct_seg_heart_from_image():
     # much background as foreground for each structure.
 
     annot_byte = get_masked_heart_annot(annot)
-    annot_path = os.path.join(sync_dir, 'annot', '01.npy')
+    annot_path = os.path.join(sync_dir, 'annots', '01.npy')
     np.save(annot_path, annot_byte)
     image_path = os.path.join(sync_dir, 'dataset', '01.npy')
     np.save(image_path, image)

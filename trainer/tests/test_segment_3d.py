@@ -17,9 +17,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 # pylint: disable=E1136 # usubscriptable shape
 import os
-import shutil
 import json
 import time
+import shutil
 
 import numpy as np
 import torch
@@ -30,6 +30,7 @@ from unet3d import UNet3D
 from model_utils import segment_3d, create_first_model_with_random_weights
 import im_utils
 from trainer import Trainer
+from test_utils import create_tmp_sync_dir
 
 
 def test_cnn_segment_classes_3d_3_classes():
@@ -124,38 +125,25 @@ def test_3d_segment_instruction():
     full 3D image segmentation prcocess.
     We don't check model accuracy here.
     """
-    # create a 'scrap' folder for the test in /tmp
-    # this scrap folder will be used as the sync_directory for this test.
-    sync_dir = os.path.join('/tmp', 'test_sync_dir')
-    if os.path.isdir(sync_dir):
-        shutil.rmtree(sync_dir)
-    os.makedirs(sync_dir)
-
-    # create an instructions folder, models folder,  dataset folder
-    # and a segmentation folder inside the sync_directory
-    instruction_dir = os.path.join(sync_dir, 'instructions')
-    dataset_dir = os.path.join(sync_dir, 'dataset')
-    seg_dir = os.path.join(sync_dir, 'seg')
-    model_dir = os.path.join(sync_dir, 'models')
-    for dpath in [instruction_dir, dataset_dir, model_dir, seg_dir]:
-        os.makedirs(dpath)
+    sync_dir = create_tmp_sync_dir()
 
     # create a model file (random weights is fine)
     # and save the model to the models folder.
-    create_first_model_with_random_weights(model_dir, num_classes=1, dimensions=3)
+    create_first_model_with_random_weights(os.path.join(sync_dir, 'models'),
+                                           num_classes=1, dimensions=3)
 
     # create an example input image using numpy and save to the datsets folder
     example_image = np.random.rand(512, 512, 96) # similar to what was found with struct seg
     img = nib.Nifti1Image(example_image, np.eye(4))
-    img_path = os.path.join(dataset_dir, 'example_image.nii.gz')
+    img_path = os.path.join(os.path.join(sync_dir, 'dataset'), 'example_image.nii.gz')
     img.to_filename(img_path)
 
     # create an instruction as json.
     fpath = send_segment_instruction({
-        "dataset_dir": dataset_dir,
-        "seg_dir": seg_dir,
+        "dataset_dir": os.path.join(sync_dir, 'dataset'),
+        "seg_dir": os.path.join(sync_dir, 'seg'),
         "file_names": ['example_image.nii.gz'],
-        "model_dir": model_dir,
+        "model_dir": os.path.join(sync_dir, 'models'),
         "dimensions": 3,
         "classes": ['heart']
     }, sync_dir)
@@ -166,10 +154,9 @@ def test_3d_segment_instruction():
 
     # tell the trainer to check for instructions
     trainer.check_for_instructions()
-    print('checking')
 
     # assert that the segmentation file has been created
-    seg_path = os.path.join(seg_dir, 'example_image.nii.gz')
+    seg_path = os.path.join(sync_dir, 'seg', 'example_image.nii.gz')
     assert os.path.isfile(seg_path)
 
     # assert that it it is non-zero (random weights don't do this)
