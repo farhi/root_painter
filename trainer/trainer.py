@@ -322,7 +322,6 @@ class Trainer():
             if mode == 'train':            
                 loss.backward()
                 self.optimizer.step()
-                print(f'{time.time()},{loss.item()}', file=open('losses.txt', 'a'))
             
             if mode == 'train':
                 sys.stdout.write(f"{mode} {(step+1) * self.batch_size}/"
