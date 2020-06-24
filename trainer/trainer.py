@@ -96,6 +96,7 @@ class Trainer():
                 train_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
                 self.log_metrics('train', train_m) 
             if self.training:
+
                 self.validation()
                 if on_epoch_end:
                     on_epoch_end()
@@ -233,6 +234,7 @@ class Trainer():
         Path(os.path.join(self.msg_dir, message)).touch()
 
     def one_epoch(self, model, mode='train', val_tile_refs=None):
+        torch.cuda.empty_cache() # we need to make sure we have enough memory
         # mode is train or val
         annot_dir = self.train_config[f'{mode}_annot_dir']
         if not [is_image(a) for a in ls(annot_dir)]:
