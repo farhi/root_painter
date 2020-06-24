@@ -42,6 +42,7 @@ def test_train_to_predict_zeros_from_random():
     Very simple test to check that we can train the CNN model to predict 0
     We will use the same input (random tensor) every time
     """
+    torch.cuda.empty_cache() # we need to make sure we have enough memory for this test.
     num_classes = 3
     cnn = UNet3D(im_channels=1, out_channels=num_classes).cuda()
     test_input = torch.rand((1, 1, 56, 240, 240)).cuda()
@@ -99,6 +100,7 @@ def test_train_identity_from_random():
 
     It cannot actually do this but we can test that it gets close.
     """
+    torch.cuda.empty_cache() # we need to make sure we have enough memory for this test.
     cnn = UNet3D(im_channels=1, out_channels=1).cuda()
     batch_size = 1
     optimizer = torch.optim.SGD(cnn.parameters(), lr=0.01, momentum=0.99, nesterov=True)
@@ -158,6 +160,8 @@ def test_train_struct_seg_heart_patch():
     This test requires the struct seg dataset has been downloaded to the users
     home folder otherwise it will be skipped.
     """
+
+    torch.cuda.empty_cache() # we need to make sure we have enough memory for this test.
     data_dir = os.path.join(Path.home(), 'datasets', 'Thoracic_OAR', '1')
     if not os.path.isdir(data_dir):
         print('skip test as data not found')
@@ -205,6 +209,7 @@ def test_train_struct_seg_heart_from_image():
     This test requires the struct seg dataset has been downloaded to the users
     home folder otherwise it will be skipped.
     """
+    torch.cuda.empty_cache() # we need to make sure we have enough memory for this test.
     data_dir = os.path.join(Path.home(), 'datasets', 'Thoracic_OAR', '1')
     if not os.path.isdir(data_dir):
         print('skip test as data not found')
