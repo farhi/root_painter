@@ -128,10 +128,10 @@ def test_3D_segment_instruction():
     
     # create a model file (random weights is fine)
     # and save the model to the models folder.
-    create_first_model_with_random_weights(model_dir, num_classes=3, dimensions=3)
+    create_first_model_with_random_weights(model_dir, num_classes=1, dimensions=3)
 
     # create an example input image using numpy and save to the datsets folder
-    example_image = np.random.rand(96, 512, 512)
+    example_image = np.random.rand(512, 512, 96) # similar to what was found with struct seg
     img = nib.Nifti1Image(example_image, np.eye(4))
     img_path = os.path.join(dataset_dir, 'example_image.nii.gz')
     img.to_filename(img_path)
@@ -142,9 +142,8 @@ def test_3D_segment_instruction():
         "seg_dir": seg_dir,
         "file_names": ['example_image.nii.gz'],
         "model_dir": model_dir,
-        "classes": [('bg', [0,180,0,0], 'w'),
-                    ('red', [255,0,0,255], '1'),
-                    ('blue', [0, 0, 255, 255], '2')]
+        "dimensions": 3,
+        "classes": ['heart']
     }
     # save the instruction (json file) to the instructions folder. 
     hash_str = '_' + str(hash(json.dumps(content)))
@@ -170,9 +169,10 @@ def test_3D_segment_instruction():
 
     assert np.sum(seg) > 0
 
-    # assert that it has the same shape as the input image
-    assert seg.shape[0] == 3 # for each class
-    assert seg[0].shape == example_image.shape
+    # assert that it has the same shape as the input image 
+    # (although we use depth first now)
+    assert seg.shape[0] == 2 # channel for fg and bg
+    assert seg[0].shape[::-1] == example_image.shape
     # assert that the segment instruction has been deleted.
     assert not os.path.isfile(fpath) 
 
