@@ -399,6 +399,13 @@ def load_image(image_path):
     dims = None
     if image_path.endswith('.npy'):
         image = np.load(image_path, mmap_mode='c')
+    elif image_path.endswith('.nii.gz'):
+        # We don't currently use them during but it's useful to be
+        # able to load nifty files directory to give the user
+        # more convenient segmentation options.
+        image = nib.load(image_path)
+        image = np.array(image.dataobj)
+        image = np.moveaxis(image, -1, 0) # depth moved to beginning
         dims = 3
     else:
         dims = 2
