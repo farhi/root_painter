@@ -92,7 +92,7 @@ class Trainer():
                 # can take a while so checks for
                 # new instructions are also made inside
                 self.val_tile_refs = self.get_new_val_tiles_refs()
-                (tps, fps, tns, fns) = self.one_epoch(self.model, 'train', self.val_tile_refs)
+                (tps, fps, tns, fns) = self.one_epoch(self.model, 'train')
                 train_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
                 self.log_metrics('train', train_m) 
             if self.training:
