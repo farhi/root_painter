@@ -42,7 +42,7 @@ def get_latest_model_paths(model_dir, k):
 
 def load_model(model_path, num_classes, dimensions):
     if dimensions == 2:
-        model = UNetGNRes(out_channels=num_classes)
+        model = UNetGNRes(out_channels=num_classes * 2)
     else:
         model = UNet3D(im_channels=1, out_channels=num_classes*2)
     try:
@@ -109,7 +109,6 @@ def get_class_metrics(get_val_annots, get_seg, classes) -> list:
             # only compute metrics on regions where annotation is defined.
             y_true = y_true.reshape(-1)[y_defined > 0]
             y_pred = y_pred.reshape(-1)[y_defined > 0]
-
             class_metrics[i]['tp'] += np.sum(np.logical_and(y_pred == 1,
                                                             y_true == 1))
             class_metrics[i]['tn'] += np.sum(np.logical_and(y_pred == 0,
@@ -119,17 +118,16 @@ def get_class_metrics(get_val_annots, get_seg, classes) -> list:
             class_metrics[i]['fn'] += np.sum(np.logical_and(y_pred == 0,
                                                             y_true == 1))
     for i, m in enumerate(class_metrics):
-        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'], m['class'])
+        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'])
     return class_metrics
 
 
 def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
-
+    # This is no longer used.
     start = time.time()
     fnames = ls(val_annot_dir)
     fnames = [a for a in fnames if im_utils.is_photo(a)]
     cnn.half()
-    
     
     def get_seg(fname):
         image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
@@ -176,12 +174,15 @@ def save_if_better(model_dir, cur_model, prev_model_path, cur_dice, prev_dice):
     return False
 
 
-def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshold=0.5):
+def ensemble_segment_2d(model_paths, image, bs, in_w, out_w, classes_rgba, threshold=0.5):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
     # then add predictions from the previous models to form an ensemble
     for model_path in model_paths:
-        cnn = load_model(model_path, len(classes_rgba), dims=2)
+        # load model automatically doubles the number of classes so use half for 2d
+        # as 2d will specify foreground and background explicitly,
+        # where as this is assumed implicity with 3d
+        cnn = load_model(model_path, len(classes_rgba) // 2, dimensions=2)
         cnn.half()
         preds = segment(cnn, image, bs, in_w, out_w)
         if pred_sum is not None:
@@ -192,7 +193,6 @@ def ensemble_segment(model_paths, image, bs, in_w, out_w, classes_rgba, threshol
         flipped_im = np.fliplr(image)
         flipped_pred = segment(cnn, flipped_im, bs, in_w, out_w)
         pred_sum += np.flip(flipped_pred, 2) # return to normal
-
     return im_utils.seg_to_rgba(pred_sum, classes_rgba)
 
 
