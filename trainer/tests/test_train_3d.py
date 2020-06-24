@@ -190,8 +190,7 @@ def test_train_struct_seg_heart_patch():
         heart_preds = F.softmax(outputs, 1)[0].detach()
         heart_preds = torch.argmax(heart_preds, axis=0).cpu().numpy()
         dice = get_metrics_from_arrays(heart_preds,
-                                       heart_labels.cpu().numpy(),
-                                       'heart')['dice']
+                                       heart_labels.cpu().numpy())['dice']
         print(f'Fitting single heart patch. {i} dice:{dice}, loss: {loss.item()}')
         if dice > 0.9:
             return
