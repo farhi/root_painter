@@ -162,8 +162,9 @@ def pad(image, width: int, mode='reflect', constant_values=0):
 def pad_3d(image, width, depth, mode='reflect', constant_values=0):
     pad_shape = [(depth, depth), (width, width), (width, width)]
     if len(image.shape) == 4:
+        # assume channels first for 4 dimensional data.
         # don't pad channels
-        pad_shape = [(0, 0)] + pad_shape # channels first for 3D
+        pad_shape = [(0, 0)] + pad_shape
     if mode == 'reflect':
         return skim_util.pad(image, pad_shape, mode)
     return skim_util.pad(image, pad_shape, mode=mode,
@@ -331,7 +332,7 @@ def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     return tile_coords
 
 def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
-    assert len(im_shape) == 3 # d, h, w
+    assert len(im_shape) == 3, str(im_shape) # d, h, w
     depth_count = ceil(im_shape[0] / out_tile_shape[0])
     vertical_count = ceil(im_shape[1] / out_tile_shape[1])
     horizontal_count = ceil(im_shape[2] / out_tile_shape[2])
