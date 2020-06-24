@@ -19,21 +19,16 @@ import os
 from pathlib import Path
 import json
 import shutil
-from trainer import Trainer
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import pytest
 import nibabel as nib
-import threading
-import time
-import glob
 
-
+from trainer import Trainer
 from unet3d import UNet3D
-import im_utils
-from metrics import get_metrics_from_arrays, get_metrics_str, get_metric_csv_row
+from metrics import get_metrics_from_arrays
 
 
 @pytest.mark.slow
@@ -124,11 +119,13 @@ def test_train_identity_from_random():
 
 
 def load_nifty(image_path):
+    """ load compressed nifty file from disk and
+        switch first and last channel
+    """
     image = nib.load(image_path)
     image = np.array(image.dataobj)
     image = np.moveaxis(image, -1, 0) # depth moved to beginning
     return image
-
 
 
 def load_heart_patch(data_dir, filter_labels=True):
@@ -201,6 +198,70 @@ def test_train_struct_seg_heart_patch():
     assert False, 'Takes too long to fit heart patch'
 
 
+def create_tmp_sync_dir():
+    """ create a temporary sync dir
+        delete if it already exists
+        and return useful paths
+    """
+    sync_dir = os.path.join('/tmp', 'test_sync_dir')
+    if os.path.isdir(sync_dir):
+        shutil.rmtree(sync_dir)
+    os.makedirs(sync_dir)
+    # create an instructions folder, models folder, dataset folder
+    # and a segmentation folder inside the sync_directory
+    dnames = ['instructions', 'dataset', 'seg',
+              'models', 'annots', 'messages']
+    for dname in dnames:
+        os.makedirs(os.path.join(sync_dir, dname))
+    return sync_dir
+
+def send_training_instruction(sync_dir):
+    """ send a 'start_training' instruction """
+    instruction_dir = os.path.join(sync_dir, 'instructions')
+    content = {
+        "dataset_dir": os.path.join(sync_dir, 'dataset'),
+        "model_dir": os.path.join(sync_dir, 'models'),
+        "log_dir": sync_dir,
+        "val_annot_dir": os.path.join(sync_dir, 'annots'),
+        "train_annot_dir": os.path.join(sync_dir, 'annots'),
+        "message_dir": os.path.join(sync_dir, 'messages'),
+        "dimensions": 3,
+        "classes": ['heart'] # output channels of the network will be 0:heart, 1:not_heart
+    }
+    hash_str = '_' + str(hash(json.dumps(content)))
+    fpath = os.path.join(instruction_dir, 'start_training' + hash_str)
+    with open(fpath, 'w') as json_file:
+        json.dump(content, json_file, indent=4)
+
+
+
+def get_masked_heart_annot(annot):
+    """
+    Retrun an annotation where only the fg and bg
+    around the heart are defined.
+    Ths mitigates the class imbalnce problem and allows for faster training.
+    """
+    heart = (annot == 3).astype(np.int16) # only heart labels this time.
+    not_heart = (annot != 3).astype(np.int16) # only heart labels this time.
+    heart_locations = np.argwhere(heart > 0)
+    min_z = np.min(heart_locations[:, 0])
+    min_y = np.min(heart_locations[:, 1])
+    min_x = np.min(heart_locations[:, 2])
+    max_z = np.max(heart_locations[:, 0])
+    max_y = np.max(heart_locations[:, 1])
+    max_x = np.max(heart_locations[:, 2])
+    # set no-heart region to be a cube around the heart
+    heart_cube_mask = np.zeros(heart.shape)
+    heart_cube_mask[min_z-0:max_z+0,
+                    min_y-100:max_y+100,
+                    min_x-100:max_x+100] = 1
+    # anything outside the heart cube is set to 0
+    not_heart *= heart_cube_mask.astype(np.int16)
+    annot = np.stack((not_heart, heart))
+    annot_byte = annot.astype(np.byte) # reduce size from 100mb to 50mb
+    return annot_byte
+
+
 @pytest.mark.slow
 def test_train_struct_seg_heart_from_image():
     """
@@ -214,33 +275,16 @@ def test_train_struct_seg_heart_from_image():
     if not os.path.isdir(data_dir):
         print('skip test as data not found')
         return
-    
-    # create a temporary sync dir
-    sync_dir = os.path.join('/tmp', 'test_sync_dir')
-    if os.path.isdir(sync_dir):    
-        shutil.rmtree(sync_dir)
-    os.makedirs(sync_dir)
-
-    # create an instructions folder, models folder,  dataset folder
-    # and a segmentation folder inside the sync_directory
-    instruction_dir = os.path.join(sync_dir, 'instructions')
-    dataset_dir = os.path.join(sync_dir, 'dataset')
-    seg_dir = os.path.join(sync_dir, 'seg')
-    model_dir = os.path.join(sync_dir, 'models')
-    annot_dir = os.path.join(sync_dir, 'annots')
-    message_dir = os.path.join(sync_dir, 'messages')
-    for d in [instruction_dir, dataset_dir,
-              model_dir, seg_dir, annot_dir, message_dir]:
-        os.makedirs(d)
+    sync_dir = create_tmp_sync_dir()
 
     # Create a dataset containing a single image
     image = load_nifty(os.path.join(data_dir, 'data.nii.gz'))
     annot = load_nifty(os.path.join(data_dir, 'label.nii.gz'))
-   
+
     # Eventually we will have two channels for each struture.
     # it could work like this.
     # channel 0 = not heart
-    # channel 1 = heart 
+    # channel 1 = heart
     # channel 2 = not lungs
     # channel 3 = lungs
     # channel 4 = not esophagus
@@ -260,46 +304,16 @@ def test_train_struct_seg_heart_from_image():
     # that will not occur during corrective annotation as the protocol
     # specifies that the user will aim to label no more than 5 to 10 times as
     # much background as foreground for each structure.
- 
-    heart = (annot == 3).astype(np.int16) # only heart labels this time.
-    not_heart = (annot != 3).astype(np.int16) # only heart labels this time.
-    heart_locations = np.argwhere(heart > 0)
-    min_z = np.min(heart_locations[:, 0])
-    min_y = np.min(heart_locations[:, 1])
-    min_x = np.min(heart_locations[:, 2])
-    max_z = np.max(heart_locations[:, 0])
-    max_y = np.max(heart_locations[:, 1])
-    max_x = np.max(heart_locations[:, 2])
-    # set no-heart region to be a cube around the heart
-    heart_cube_mask = np.zeros(heart.shape)
-    heart_cube_mask[min_z-0:max_z+0,
-                    min_y-100:max_y+100,
-                    min_x-100:max_x+100] = 1
-    # anything outside the heart cube is set to 0
-    not_heart *= heart_cube_mask.astype(np.int16)
-    annot = np.stack((not_heart, heart))
-    annot_byte = annot.astype(np.byte) # reduce size from 100mb to 50mb
-    annot_path = os.path.join(annot_dir, '01.npy')
+
+    annot_byte = get_masked_heart_annot(annot)
+    annot_path = os.path.join(sync_dir, 'annot', '01.npy')
     np.save(annot_path, annot_byte)
-    image_path = os.path.join(dataset_dir, '01.npy')
+    image_path = os.path.join(sync_dir, 'dataset', '01.npy')
     np.save(image_path, image)
 
-    # send a 'start_training' instruction
-    content = {
-        "dataset_dir": dataset_dir,
-        "model_dir": model_dir, 
-        "log_dir": sync_dir,
-        "val_annot_dir": annot_dir,
-        "train_annot_dir": annot_dir,
-        "message_dir": message_dir,
-        "dimensions": 3,
-        "classes": ['heart'] # output channels of the network will be 0:heart, 1:not_heart
-    }
-    hash_str = '_' + str(hash(json.dumps(content)))
-    fpath = os.path.join(instruction_dir, 'start_training' + hash_str)
-    with open(fpath, 'w') as json_file:
-        json.dump(content, json_file, indent=4)
+    send_training_instruction(sync_dir)
     trainer = Trainer(sync_dir)
+
     def on_epoch_end():
         print('epoch end')
         fnames = os.listdir(sync_dir)
@@ -307,13 +321,14 @@ def test_train_struct_seg_heart_from_image():
         if fnames:
             fpath = os.path.join(sync_dir, fnames[0])
             lines = open(fpath).readlines()
-            for l in lines[1:]:
-                print(float(l.split(',')[-1]))
-                if float(l.split(',')[-1]) > 0.6:
+            for line in lines[1:]:
+                print(float(line.split(',')[-1]))
+                if float(line.split(',')[-1]) > 0.6:
                     print('pass')
                     trainer.running = False
                     return
             assert len(lines) < 10, 'takes too long to fit patch'
+
     trainer.main_loop(on_epoch_end)
 
 # pylint: disable=W0105 # string has no effect
