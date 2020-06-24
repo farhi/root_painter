@@ -222,7 +222,7 @@ def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
 
 def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
 
-    # image shape = (channels, depth, height, withd)
+    # image shape = (depth, height, width)
     # in_w is both w and h
     # out_w is both w and h
 
@@ -231,21 +231,16 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
     # each channel corresponds to a specific class 'probability'
     # don't need channel dimension
     # make sure the width, height and depth is at least as big as the tile.
-    assert len(image.shape) == 5, str(image.shape)
-    assert image.shape[0] == 1, str(image.shape[0])
-    assert image.shape[1] == 1, str(image.shape[1])
-    assert image.shape[2] >= in_d, str(image.shape[2])
-    assert image.shape[3] >= in_w, str(image.shape[3])
-    assert image.shape[4] >= in_w, str(image.shape[4])
-
-    image = image[0]
+    assert len(image.shape) == 3, str(image.shape)
+    assert image.shape[0] >= in_d, str(image.shape[0])
+    assert image.shape[1] >= in_w, str(image.shape[1])
+    assert image.shape[2] >= in_w, str(image.shape[2])
 
     width_diff = in_w - out_w
     pad_width = width_diff // 2
 
     depth_diff = in_d - out_d
     pad_depth = depth_diff // 2
-    
     
     padded_im = im_utils.pad_3d(image, pad_width, pad_depth)
     coords = im_utils.get_coords_3d(padded_im.shape, image.shape,
@@ -265,10 +260,11 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
             if coord_idx < len(coords):
                 coord = coords[coord_idx]
                 x, y, z = coord
-                tile = padded_im[:,
-                                 z:z+in_d,
+                tile = padded_im[z:z+in_d,
                                  y:y+in_w,
                                  x:x+in_w]
+                # need to add channel dimension for GPU processing.
+                tile = np.expand_dims(tile, axis=0) 
                 assert tile.shape[1] == in_d, str(tile.shape)
                 assert tile.shape[2] == in_w, str(tile.shape)
                 assert tile.shape[3] == in_w, str(tile.shape)
@@ -288,10 +284,12 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
         num_classes = pred_np.shape[1] # how many output classes
 
         if seg is None:
-            seg_shape = [num_classes] + list(image.shape[1:])
+            seg_shape = [num_classes] + list(image.shape)
             seg = np.zeros(seg_shape)
+
         out_tiles = pred_np.reshape((len(tiles_for_gpu), num_classes, out_d, out_w, out_w))
         
+
         # add the predictions from the gpu to the output segmentation
         # use their correspond coordinates
         for tile, (x, y, z) in zip(out_tiles, coords_to_process):

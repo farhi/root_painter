@@ -63,36 +63,35 @@ def test_CNN_segment_classes_3D_9_classes():
     assert output.shape[1] == num_classes
 
 
-@pytest.mark.slow
+#@pytest.mark.slow
 def test_segment_large_3D_image(monkeypatch):
     """ Test that the segmentation method reconstructs the output properly """
 
     def cnn(tile):
         assert len(tile.shape) == 5
-        assert tile.shape[0] == 1
-        assert tile.shape[1] == 1
-        assert tile.shape[2] == 64, str(tile.shape)
-        assert tile.shape[3] == 312
-        assert tile.shape[4] == 312
+        assert tile.shape[0] == 1 # batch dimension
+        assert tile.shape[1] == 1 # channel dimension
+        assert tile.shape[2] == 64, str(tile.shape) # depth
+        assert tile.shape[3] == 312 # height
+        assert tile.shape[4] == 312 # width
 
         # identify function as we are only testing the reconstruction methods
         # test returning a smaller part of the image as would happen in reality.
         # take the central 18 slices.
         d_crop = (64 - 18) // 2
         w_crop = (312 - 274) // 2
-
+        # taking advatnage of the channel size and class size being equivalent
         central_part = tile[:, :, d_crop:-d_crop, w_crop:-w_crop, w_crop:-w_crop]
-        return central_part.unsqueeze(1) # add a (single) classes dimension
+        return central_part
 
     def mock_normalize_tile(tile):
         # skip normalization step.
         return tile
     
     monkeypatch.setattr(im_utils, "normalize_tile", mock_normalize_tile)
-    channels = 1 
     depth = 96
-    test_input = np.random.rand(channels, depth, 512, 512) # depth, height, width
-    test_input = np.expand_dims(test_input, axis=0) # batch dimension
+    test_input = np.random.rand(depth, 512, 512) # depth, height, width
+    #test_input = np.expand_dims(test_input, axis=0) # batch dimension
     in_w = 312
     out_w = 274
     in_d = 64
