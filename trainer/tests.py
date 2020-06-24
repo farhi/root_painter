@@ -16,16 +16,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import sys
 import pytest
 import pathlib
 
 run_single = True
 
 if run_single:
-    import sys
     sys.path.insert(1, 'tests')
-    # from test_train_3d import test_train_struct_seg_heart_patch as single_test
+    #from test_train_3d import test_train_struct_seg_heart_patch as single_test
+    #from test_train_3d import test_train_to_predict_zeros_from_random as single_test
     from test_train_3d import test_train_struct_seg_heart_from_image as single_test
+    #from test_segment import test_2d_segment_instruction as single_test
     single_test()
 else:
     test_dir = pathlib.Path.cwd() / 'tests'
