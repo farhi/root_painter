@@ -109,19 +109,19 @@ class Trainer():
 
         # Assume 2 if dimensions not defined.
         # We may want to maintain compatability with older (2D only) clients.
-        if 'dimensions' not in config:
-            config['dimensions'] = 2
+        if 'dimensions' not in new_config:
+            new_config['dimensions'] = 2
 
         # for now we will have defaults for either 2d or 3d
         # we may want to allow the user to specify this or adapt based
         # on image dimensions, hardware capabilities and batch size
-        if config['dimensions'] == 2:
+        if new_config['dimensions'] == 2:
             # 2D defaults to 3 channels, but this is not the same as depth
             new_config['in_w'] = 572
             new_config['out_w'] = 500
             new_config['in_d'] = 1
             new_config['out_d'] = 1
-        elif config['dimensions'] == 3:
+        elif new_config['dimensions'] == 3:
             new_config['in_w'] = 240
             new_config['out_w'] = 194
             new_config['in_d'] = 56
@@ -430,8 +430,14 @@ class Trainer():
         """
         in_dir = segment_config['dataset_dir']
         seg_dir = segment_config['seg_dir']
-        classes_rgba = [c[1] for c in segment_config['classes']]
+
+
         segment_config = self.add_config_shape(segment_config)
+        if segment_config['dimensions'] == 2:
+            # 2d includes colour for each class as these are generated as PNG 
+            classes = [c[1] for c in segment_config['classes']]
+        else:
+            classes = segment_config['classes']
 
         if "file_names" in segment_config:
             fnames = segment_config['file_names']
@@ -448,7 +454,7 @@ class Trainer():
             # if latest is not found then create a model with random weights
             # and use that.
             if not model_paths:
-                create_first_model_with_random_weights(model_dir, len(classes_rgba),
+                create_first_model_with_random_weights(model_dir, len(classes),
                                                        int(segment_config['dimensions']))
                 model_paths = model_utils.get_latest_model_paths(model_dir, 1)
         
@@ -456,9 +462,11 @@ class Trainer():
 
         for fname in fnames:
             self.segment_file(in_dir, seg_dir, fname,
-                              model_paths, classes_rgba,
+                              model_paths, classes,
                               in_w = segment_config['in_w'],
                               out_w = segment_config['out_w'],
+                              in_d = segment_config['in_d'],
+                              out_d = segment_config['out_d'],
                               sync_save=len(fnames) == 1)
         duration = time.time() - start
         print(f'Seconds to segment {len(fnames)} images: ', round(duration, 3))
@@ -498,7 +506,8 @@ class Trainer():
         return prev_m
 
 
-    def segment_file(self, in_dir, seg_dir, fname, model_paths, classes_rgba, in_w, out_w, sync_save):
+    def segment_file(self, in_dir, seg_dir, fname, model_paths, classes,
+                     in_w, out_w, in_d, out_d, sync_save):
         fpath = os.path.join(in_dir, fname)
 
         # Segmentations are always saved as PNG for 2d or nifty for 3d
@@ -529,11 +538,11 @@ class Trainer():
             if dims == 2:
                 # rgba
                 segmented = ensemble_segment_2d(model_paths, im, self.batch_size,
-                                             in_w, out_w, classes_rgba)
+                                             in_w, out_w, classes)
             elif dims == 3:
                 segmented = ensemble_segment_3d(model_paths, im, self.batch_size,
                                                 in_w, out_w, in_d,
-                                                out_d, len(classes_rgba))
+                                                out_d, len(classes))
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
