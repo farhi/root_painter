@@ -104,7 +104,7 @@ def test_2d_segment_instruction():
 
     # create a model file (random weights is fine)
     # and save the model to the models folder.
-    create_first_model_with_random_weights(model_dir, num_classes=3, dimensions=2)
+    create_first_model_with_random_weights(model_dir, num_classes=1, dimensions=2)
 
     # create an example input image using numpy and save to the datsets folder
     example_image = np.random.rand(1200, 600, 3)
@@ -117,10 +117,10 @@ def test_2d_segment_instruction():
         "seg_dir": seg_dir,
         "file_names": ['example_image.jpeg'],
         "model_dir": model_dir,
-        "classes": [('bg', [0, 180, 0, 0], 'w'),
-                    ('red', [255, 0, 0, 255], '1'),
-                    ('blue', [0, 0, 255, 255], '2')]
+        "classes": [('bg', [0, 180, 0, 0]),
+                    ('fg', [255, 0, 0, 255])]
     }
+
     # save the instruction (json file) to the instructions folder.
     hash_str = '_' + str(hash(json.dumps(content)))
     fpath = os.path.join(instruction_dir, 'segment' + hash_str)
