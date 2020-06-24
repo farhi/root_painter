@@ -232,9 +232,9 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
     # don't need channel dimension
     # make sure the width, height and depth is at least as big as the tile.
     assert len(image.shape) == 3, str(image.shape)
-    assert image.shape[0] >= in_d, str(image.shape[0])
-    assert image.shape[1] >= in_w, str(image.shape[1])
-    assert image.shape[2] >= in_w, str(image.shape[2])
+    assert image.shape[0] >= in_d, f"{image.shape[0]},{in_d}"
+    assert image.shape[1] >= in_w, f"{image.shape[1]},{in_w}"
+    assert image.shape[2] >= in_w, f"{image.shape[2]},{in_w}"
 
     width_diff = in_w - out_w
     pad_width = width_diff // 2
