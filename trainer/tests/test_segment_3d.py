@@ -63,7 +63,7 @@ def test_CNN_segment_classes_3D_9_classes():
     assert output.shape[1] == num_classes
 
 
-#@pytest.mark.slow
+@pytest.mark.slow
 def test_segment_large_3D_image(monkeypatch):
     """ Test that the segmentation method reconstructs the output properly """
 
