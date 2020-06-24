@@ -169,7 +169,7 @@ class RPDataset(Dataset):
             return self.get_train_item_3d(image, annot, i)
 
 
-    def get_random_tile_3d(self, annot, image):
+    def get_random_tile_3d(self, annot, image, pad_w, pad_d):
         # this will find something eventually as we know
         # all annotation contain labels somewhere
         padded_d = annot[0].shape[0]
@@ -179,7 +179,7 @@ class RPDataset(Dataset):
         right_lim = padded_w - self.in_w
         bottom_lim = padded_h - self.in_w
         depth_lim = padded_d - self.in_d
-
+        
         while True: 
             x_in = math.floor(random.random() * right_lim)
             y_in = math.floor(random.random() * bottom_lim)
@@ -188,7 +188,10 @@ class RPDataset(Dataset):
                                z_in:z_in+self.in_d,
                                y_in:y_in+self.in_w,
                                x_in:x_in+self.in_w]
-            if np.sum(annot_tile) > 0:
+            annot_tile_center = annot_tile[:, pad_d:-pad_d,
+                                           pad_w:-pad_w, pad_w:-pad_w]
+            # we only want annotations with defiend regions in the output area
+            if np.sum(annot_tile_center) > 0:
                 im_tile = image[z_in:z_in+self.in_d,
                                 y_in:y_in+self.in_w,
                                 x_in:x_in+self.in_w]
@@ -215,15 +218,14 @@ class RPDataset(Dataset):
             im_tile = padded_im[z:z+self.in_d, y:y+self.in_w, x:x+self.in_w]
             annot_tile = annot[:, z:z+self.out_d, y:y+self.out_w, x:x+self.out_w]
         else:
-            annot_tile, im_tile = self.get_random_tile_3d(annot, image)
+            annot_tile, im_tile = self.get_random_tile_3d(annot, image, pad_width, pad_depth)
             # 3d augmentation isn't implemented yet but
             # Annotion is cropped post augmentation to ensure
             # elastic grid doesn't remove the edges.
-            annot_tile = annot_tile[:,
-                                pad_depth:-pad_depth,
-                                pad_width:-pad_width,
-                                pad_width:-pad_width]
-
+            annot_tile_center = annot_tile[:,
+                                           pad_depth:-pad_depth,
+                                           pad_width:-pad_width,
+                                           pad_width:-pad_width]
         assert np.sum(annot_tile) > 0, 'annot tile should contain annotation'
         assert annot_tile.shape[1:] == (self.out_d, self.out_w, self.out_w), (
             f" shape is {annot_tile.shape}")
