@@ -15,23 +15,24 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+# pylint: disable=E1136 # usubscriptable shape
 import os
 import shutil
 import json
+import time
+
 import numpy as np
 import torch
-import time
 import pytest
 import nibabel as nib
-from skimage.io import imread, imsave
-from unet import UNetGNRes
+
 from unet3d import UNet3D
-from model_utils import segment, segment_3d, create_first_model_with_random_weights
+from model_utils import segment_3d, create_first_model_with_random_weights
 import im_utils
 from trainer import Trainer
 
 
-def test_CNN_segment_classes_3D_3_classes():
+def test_cnn_segment_classes_3d_3_classes():
     """
     test CNN returns data in the correct shape for a single cube.
     Using random weights this time so the output is not checked.
@@ -47,7 +48,7 @@ def test_CNN_segment_classes_3D_3_classes():
     assert output.shape[1] == num_classes
 
 
-def test_CNN_segment_classes_3D_9_classes():
+def test_cnn_segment_classes_3d_9_classes():
     """
     test CNN returns data in the correct shape for a single cube.
     Using random weights this time so the output is not checked.
@@ -64,7 +65,7 @@ def test_CNN_segment_classes_3D_9_classes():
 
 
 @pytest.mark.slow
-def test_segment_large_3D_image(monkeypatch):
+def test_segment_large_3d_image(monkeypatch):
     """ Test that the segmentation method reconstructs the output properly """
 
     def cnn(tile):
@@ -87,7 +88,7 @@ def test_segment_large_3D_image(monkeypatch):
     def mock_normalize_tile(tile):
         # skip normalization step.
         return tile
-    
+
     monkeypatch.setattr(im_utils, "normalize_tile", mock_normalize_tile)
     depth = 96
     test_input = np.random.rand(depth, 512, 512) # depth, height, width
@@ -95,37 +96,50 @@ def test_segment_large_3D_image(monkeypatch):
     out_w = 274
     in_d = 64
     out_d = 18
-    input_tile_shape = (in_d, in_w, in_w)
-    output_tile_shape = (out_d, out_w, out_w)
-    bs = 1
-    seg = segment_3d(cnn, test_input, bs, in_w, out_w, in_d, out_d)
+    batch_size = 1
+    seg = segment_3d(cnn, test_input, batch_size, in_w, out_w, in_d, out_d)
     # not exactly equal because of going via 16bit etc.
     assert np.allclose(seg, test_input, atol=0.01)
 
 
+
+
+def send_segment_instruction(content, sync_dir):
+    """
+    Add a segmentation instruction json file for the specified sync_dir
+    """
+    instruction_dir = os.path.join(sync_dir, 'instructions')
+    # save the instruction (json file) to the instructions folder.
+    hash_str = '_' + str(hash(json.dumps(content)))
+    fpath = os.path.join(instruction_dir, 'segment' + hash_str)
+    with open(fpath, 'w') as json_file:
+        json.dump(content, json_file, indent=4)
+    return fpath
+
+
 @pytest.mark.slow
-def test_3D_segment_instruction():
+def test_3d_segment_instruction():
     """
-    A high level integration test for the 
+    A high level integration test for the
     full 3D image segmentation prcocess.
-    We don't check model accuracy here. 
+    We don't check model accuracy here.
     """
-    # create a 'scrap' folder for the test in /tmp 
+    # create a 'scrap' folder for the test in /tmp
     # this scrap folder will be used as the sync_directory for this test.
     sync_dir = os.path.join('/tmp', 'test_sync_dir')
     if os.path.isdir(sync_dir):
-        shutil.rmtree(sync_dir) 
+        shutil.rmtree(sync_dir)
     os.makedirs(sync_dir)
-    
+
     # create an instructions folder, models folder,  dataset folder
     # and a segmentation folder inside the sync_directory
     instruction_dir = os.path.join(sync_dir, 'instructions')
     dataset_dir = os.path.join(sync_dir, 'dataset')
     seg_dir = os.path.join(sync_dir, 'seg')
     model_dir = os.path.join(sync_dir, 'models')
-    for d in [instruction_dir, dataset_dir, model_dir, seg_dir]:
-        os.makedirs(d)
-    
+    for dpath in [instruction_dir, dataset_dir, model_dir, seg_dir]:
+        os.makedirs(dpath)
+
     # create a model file (random weights is fine)
     # and save the model to the models folder.
     create_first_model_with_random_weights(model_dir, num_classes=1, dimensions=3)
@@ -137,20 +151,15 @@ def test_3D_segment_instruction():
     img.to_filename(img_path)
 
     # create an instruction as json.
-    content = {
+    fpath = send_segment_instruction({
         "dataset_dir": dataset_dir,
         "seg_dir": seg_dir,
         "file_names": ['example_image.nii.gz'],
         "model_dir": model_dir,
         "dimensions": 3,
         "classes": ['heart']
-    }
-    # save the instruction (json file) to the instructions folder. 
-    hash_str = '_' + str(hash(json.dumps(content)))
-    fpath = os.path.join(instruction_dir, 'segment' + hash_str)
-    with open(fpath, 'w') as json_file:
-        json.dump(content, json_file, indent=4)
- 
+    }, sync_dir)
+
     # create a trainer object and set the sync directory
     # to be the scrap folder which has been created.
     trainer = Trainer(sync_dir)
@@ -163,18 +172,18 @@ def test_3D_segment_instruction():
     seg_path = os.path.join(seg_dir, 'example_image.nii.gz')
     assert os.path.isfile(seg_path)
 
-    # assert that it it is non-zero (random weights don't do this) 
+    # assert that it it is non-zero (random weights don't do this)
     image = nib.load(seg_path)
     seg = np.array(image.dataobj)
 
     assert np.sum(seg) > 0
 
-    # assert that it has the same shape as the input image 
+    # assert that it has the same shape as the input image
     # (although we use depth first now)
     assert seg.shape[0] == 2 # channel for fg and bg
     assert seg[0].shape[::-1] == example_image.shape
     # assert that the segment instruction has been deleted.
-    assert not os.path.isfile(fpath) 
+    assert not os.path.isfile(fpath)
 
     # clean up the the scrap folder that was created in /tmp
-    shutil.rmtree(sync_dir) 
+    shutil.rmtree(sync_dir)
