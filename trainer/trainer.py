@@ -94,7 +94,7 @@ class Trainer():
                 self.val_tile_refs = self.get_new_val_tiles_refs()
                 (tps, fps, tns, fns) = self.one_epoch(self.model, 'train')
                 train_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
-                self.log_metrics('train', train_m) 
+                self.log_metrics('train', train_m)
             if self.training:
 
                 self.validation()
@@ -256,16 +256,16 @@ class Trainer():
                                 self.train_config['classes'], 'val',
                                 val_tile_refs)
             torch.set_grad_enabled(False)
-            loader = DataLoader(dataset, self.batch_size * 2, shuffle=True,        
+            loader = DataLoader(dataset, self.batch_size * 2, shuffle=True,
                                 num_workers=16, drop_last=False, pin_memory=True)
             model.half()
         elif mode == 'train':
             dataset = RPDataset(self.train_config['train_annot_dir'],
                                 self.train_config['dataset_dir'],
                                 self.train_config['in_w'],
-                                self.train_config['out_w'], 
-                                self.train_config['in_d'], 
-                                self.train_config['out_d'], 
+                                self.train_config['out_w'],
+                                self.train_config['in_d'],
+                                self.train_config['out_d'],
                                 self.train_config['classes'], 'train',
                                 val_tile_refs)
             torch.set_grad_enabled(True)
@@ -275,7 +275,7 @@ class Trainer():
             model.train()
         else:
             raise Exception(f"Invalid mode: {mode}")
-        
+
         epoch_start = time.time()
 
         tps = []
@@ -299,7 +299,7 @@ class Trainer():
             outputs = model(im_tiles)
             outputs[:, 0] *= defined_tiles
             outputs[:, 1] *= defined_tiles
-    
+
             loss = criterion(outputs, target_tiles)
             softmaxed = softmax(outputs, 1)
             # just the foreground probability.
@@ -321,10 +321,10 @@ class Trainer():
                 fps.append(torch.sum((foregrounds_list == 0) * (preds_list == 1)).cpu().numpy())
                 fns.append(torch.sum((foregrounds_list == 1) * (preds_list == 0)).cpu().numpy())
 
-            if mode == 'train':            
+            if mode == 'train':
                 loss.backward()
                 self.optimizer.step()
-            
+
             if mode == 'train':
                 sys.stdout.write(f"{mode} {(step+1) * self.batch_size}/"
                                  f"{len(loader.dataset)} "
@@ -436,7 +436,7 @@ class Trainer():
 
         segment_config = self.add_config_shape(segment_config)
         if segment_config['dimensions'] == 2:
-            # 2d includes colour for each class as these are generated as PNG 
+            # 2d includes colour for each class as these are generated as PNG
             classes = [c[1] for c in segment_config['classes']]
         else:
             classes = segment_config['classes']
@@ -459,7 +459,7 @@ class Trainer():
                 create_first_model_with_random_weights(model_dir, len(classes),
                                                        int(segment_config['dimensions']))
                 model_paths = model_utils.get_latest_model_paths(model_dir, 1)
-        
+
         start = time.time()
 
         for fname in fnames:
@@ -485,10 +485,10 @@ class Trainer():
                     refs_to_compute.append(t)
         else:
             refs_to_compute = self.val_tile_refs
-        
+
         print('computing prev model metrics for ', len(refs_to_compute), 'out of', len(self.val_tile_refs))
         # if it is missing metrics then add it to refs_to_compute
-        # then compute the errors for these tile refs 
+        # then compute the errors for these tile refs
         if refs_to_compute:
             (tps, fps, tns, fns) = self.one_epoch(prev_model, 'val', refs_to_compute)
             assert len(tps) == len(fps) == len(tns) == len(fns) == len(refs_to_compute)
@@ -503,7 +503,7 @@ class Trainer():
                             assert ref[3] == None
                         ref[3] = [tp, fp, tn, fn]
                         assert self.val_tile_refs[i][3] is not None
-        
+
         prev_m = metrics_from_val_tile_refs(self.val_tile_refs)
         return prev_m
 
@@ -530,7 +530,7 @@ class Trainer():
                 # its ok just skip it.
                 print('Exception loading', fpath, e)
                 return
-            
+
             # if input is smaller than this, behaviour is unpredictable.
             if dims == 2:
                 if im.shape[0] < in_w or im.shape[1] < in_w:
