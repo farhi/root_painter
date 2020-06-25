@@ -82,12 +82,15 @@ def get_new_annot_target_dir(train_annot_dir, val_annot_dir):
     return train_annot_dir
 
 
+
 #pylint: disable=R0913 # Too many arguments
-def maybe_save_annotation(proj_location, annot_pixmap, annot_path, png_fname,
-                          train_annot_dir, val_annot_dir):
+
+def maybe_save_annotation_2d(proj_location, annot_pixmap,
+                             annot_path, fname,
+                             train_annot_dir, val_annot_dir):
+
     # First save to project folder as temp file.
     temp_out = os.path.join(proj_location, 'temp_annot.png')
-    annot_pixmap.save(temp_out, 'PNG')
 
     # if there is an existing annotation.
     if annot_path:
@@ -102,7 +105,7 @@ def maybe_save_annotation(proj_location, annot_pixmap, annot_path, png_fname,
         if np.sum(imread(temp_out)):
             # then find the best place to put it based on current counts.
             annot_dir = get_new_annot_target_dir(train_annot_dir, val_annot_dir)
-            annot_path = os.path.join(annot_dir, png_fname)
+            annot_path = os.path.join(annot_dir, os.path.splitext(fname) + '.png')
             annot_pixmap.save(annot_path, 'PNG')
         else:
             # if the annotation did not have content.
@@ -121,4 +124,32 @@ def maybe_save_annotation(proj_location, annot_pixmap, annot_path, png_fname,
             os.remove(temp_out)
         except Exception as e:
             print('Caught exception when trying to detele temp annot', e)
+    return annot_path
+
+
+def maybe_save_annotation_3d(proj_location, annot_data, annot_path,
+                             fname, train_annot_dir, val_annot_dir):
+
+    # if there is an existing annotation.
+    if annot_path:
+        existing_annot = np.load(annot_path)
+        # and the annot we are saving is different.
+        if not np.array_equal(annot_data, existing_annot):
+            # Then we must over-write the previously saved annoation.
+            # The user is performing an edit, possibly correcting an error.
+            np.save(annot_path, annot_data)
+    else:
+        # if there is not an existing annotation
+        # and the annotation has some content
+        if np.sum(annot_data):
+            # then find the best place to put it based on current counts.
+            annot_dir = get_new_annot_target_dir(train_annot_dir, val_annot_dir)
+            annot_path = os.path.join(annot_dir, fname)
+            annot_pixmap.save(annot_path, 'PNG')
+        else:
+            # if the annotation did not have content.
+            # and there was not an existing annotation
+            # then don't save anything, this data is useless for
+            # training.
+            print('not saving as annotation empty')
     return annot_path

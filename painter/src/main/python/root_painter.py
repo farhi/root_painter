@@ -949,7 +949,14 @@ class RootPainter(QtWidgets.QMainWindow):
             self.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
 
     def save_annotation(self):
-        if self.scene.annot_pixmap:
+        if self.image_path.endswith('.npy'): 
+            self.annot_path = maybe_save_annotation_3d(self.proj_location,
+                                                       self.annot_data
+                                                       self.annot_path,
+                                                       self.fname,
+                                                       self.train_annot_dir,
+                                                       self.val_annot_dir)
+        elif self.scene.annot_pixmap:
             self.annot_path = maybe_save_annotation(self.proj_location,
                                                     self.scene.annot_pixmap,
                                                     self.annot_path,
