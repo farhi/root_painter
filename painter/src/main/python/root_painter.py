@@ -24,6 +24,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # too many public methods
 # pylint: disable=R0904
+# pylint: disable=E0401 # import error
+# pylint: disable=C0103 # Method name "initUI" doesn't conform to snake_case naming style (invalid-name)
 
 import sys
 import os
@@ -38,7 +40,7 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
-import qimage2ndarray 
+import qimage2ndarray
 
 from about import AboutWindow, LicenseWindow
 from create_project import CreateProjectWidget
@@ -87,7 +89,7 @@ class RootPainter(QtWidgets.QMainWindow):
         self.im_height = None
 
         self.initUI()
-        
+
     def mouse_scroll(self, event):
         scroll_up = event.angleDelta().y() > 0
         modifiers = QtWidgets.QApplication.keyboardModifiers()
@@ -181,7 +183,7 @@ class RootPainter(QtWidgets.QMainWindow):
             Show image file and it's associated annotation and segmentation """
 
         # if anything has happened then save it before loading the next file
-        if len(self.scene.history) > 1: 
+        if len(self.scene.history) > 1:
             self.save_annotation()
 
         self.image_path = os.path.join(self.dataset_dir, os.path.basename(fpath))
@@ -197,7 +199,7 @@ class RootPainter(QtWidgets.QMainWindow):
         """ update image file data """
         assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
         self.img_data = im_utils.load_image(self.image_path)
-        
+
         # TODO if an annotation exists then load it.
         # self.seg_path = os.path.join(self.seg_dir, fname)
         # self.annot_path = get_annot_path(fname,
@@ -219,24 +221,21 @@ class RootPainter(QtWidgets.QMainWindow):
         self.cur_slice_idx = self.axial_nav.slice_idx
         self.update_image_with_contrast()
 
-        
+
 
     def update_image_with_contrast(self):
         """ show the already loaded image we are looking at, at the specific
             slice the user has specified and using the specific
             user specified contrast settings.
-        """ 
+        """
         is_3d = True
         if is_3d:
-
-            d, h, w = self.img_data.shape
             img = np.array(self.img_data[self.axial_nav.slice_idx, :, :])
-
             img = im_utils.norm_slice(img,
                                       self.contrast_slider.min_value,
                                       self.contrast_slider.max_value,
                                       self.contrast_slider.brightness_value)
-            q_image = im_utils.np_to_q_image(img)
+            q_image = qimage2ndarray.array2qimage(img)
             image_pixmap = QtGui.QPixmap.fromImage(q_image)
             im_size = image_pixmap.size()
             im_width, im_height = im_size.width(), im_size.height()
@@ -253,9 +252,6 @@ class RootPainter(QtWidgets.QMainWindow):
 
             self.black_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
             self.black_pixmap.fill(Qt.black)
-
-            fname = os.path.basename(self.image_path)
-
 
             if self.image_pixmap_holder:
                 self.image_pixmap_holder.setPixmap(image_pixmap)
@@ -386,9 +382,9 @@ class RootPainter(QtWidgets.QMainWindow):
     def segment_image(self, image_fnames):
         # send instruction to segment the new image.
         seg_classes = copy.deepcopy(self.classes)
-        # Tell server to segment the bg with 0 alpha 
+        # Tell server to segment the bg with 0 alpha
         assert seg_classes[0][0] == 'Background'
-        seg_classes[0][1][3] = 0  
+        seg_classes[0][1][3] = 0
         # send instruction to segment the new image.
         content = {
             "dataset_dir": self.dataset_dir,
@@ -734,7 +730,7 @@ class RootPainter(QtWidgets.QMainWindow):
         view_menu.addAction(toggle_image_visibility_btn)
 
         self.add_contrast_setting_options(view_menu)
-        
+
         # Network Menu
         network_menu = menu_bar.addMenu('Network')
 
@@ -768,7 +764,7 @@ class RootPainter(QtWidgets.QMainWindow):
         self.add_extras_menu(menu_bar)
 
     def add_contrast_setting_options(self, view_menu):
-        preset_count = 0 
+        preset_count = 0
         for preset in self.contrast_presets:
             def add_preset_option(new_preset, preset_count):
                 preset = new_preset
@@ -790,9 +786,9 @@ class RootPainter(QtWidgets.QMainWindow):
         self.brush_menu.addAction(color_action)
         color_action.triggered.connect(partial(self.set_color,
                                                color=QtGui.QColor(*color_val)))
-        if self.scene.brush_color == None:
+        if self.scene.brush_color is None:
             self.scene.brush_color = QtGui.QColor(*color_val)
-    
+
     def add_brushes(self):
 
         self.brush_menu = self.menu_bar.addMenu("Brushes")
