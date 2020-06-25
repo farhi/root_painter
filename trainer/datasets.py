@@ -98,7 +98,7 @@ class RPDataset(Dataset):
         target_classes is a list of the possible output classes
             the position in the list is the index (target) to be predicted by
             the network in the output.
-            The value of the elmenent is the rgba (int, int, int) used to draw this 
+            The value of the elmenent is the rgba (int, int, int) used to draw this
             class in the annotation.
         """
         self.mode = mode
@@ -117,13 +117,15 @@ class RPDataset(Dataset):
     def __len__(self):
         if self.mode == 'val':
             return len(self.tile_refs)
+        if self.tile_refs is not None:
+            return len(self.tile_refs)
+        # use at least 612 for 2d or 64 for 3D but when dataset gets
+        # bigger start to expand to prevent validation
+        # from taking all the time (relatively)
+        if self.out_d and self.out_d > 1: 
+            return max(64, len(ls(self.annot_dir)) * 2) 
         else:
-            if self.tile_refs is not None:
-                return len(self.tile_refs)
-            # use at least 612 but when dataset gets bigger start to expand
-            # to prevent validation from taking all the time (relatively)
-            return max(64, len(ls(self.annot_dir)) * 2)
-
+            return max(612, len(ls(self.annot_dir)) * 2) 
 
     def get_val_item(self, tile_ref, i):
         fname, (x, y), _ = tile_ref
@@ -179,8 +181,8 @@ class RPDataset(Dataset):
         right_lim = padded_w - self.in_w
         bottom_lim = padded_h - self.in_w
         depth_lim = padded_d - self.in_d
-        
-        while True: 
+
+        while True:
             x_in = math.floor(random.random() * right_lim)
             y_in = math.floor(random.random() * bottom_lim)
             z_in = math.floor(random.random() * depth_lim)
@@ -198,8 +200,8 @@ class RPDataset(Dataset):
                 return annot_tile, im_tile
 
 
-    def get_train_item_3d(self, image, annot, i): 
-        # no padding OR augmentation for now. 
+    def get_train_item_3d(self, image, annot, i):
+        # no padding OR augmentation for now.
         # will bring these back in later.
         padded_d = annot[0].shape[0]
         padded_h = annot[0].shape[1]
@@ -232,14 +234,13 @@ class RPDataset(Dataset):
 
         assert im_tile.shape == (self.in_d, self.in_w, self.in_w), (
             f" shape is {im_tile.shape}")
-       
+
         im_tile = img_as_float32(im_tile)
         im_tile = im_utils.normalize_tile(im_tile)
         mask = annot_tile[0] + annot_tile[1]
         mask[mask > 1] = 1
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)
-
         im_tile = im_tile.astype(np.float32)
         im_tile = torch.from_numpy(np.expand_dims(im_tile, axis=0)) # add channels
         annot_tile = torch.from_numpy(annot_tile).long()
@@ -247,7 +248,7 @@ class RPDataset(Dataset):
         return im_tile, annot_tile, mask
 
 
-    def get_train_item_2d(self, image, annot, i): 
+    def get_train_item_2d(self, image, annot, i):
         # ensures each pixel is sampled with equal chance
         tile_pad = (self.in_w - self.out_w) // 2
         im_pad_w = self.out_w + tile_pad
@@ -307,7 +308,7 @@ class RPDataset(Dataset):
         _, coord, _, _ = tile_ref
         if len(coord) == 2:
             return self.get_val_item_2d(tile_ref, i)
-        else:  
+        else:
             return self.get_val_item_3d(tile_ref, i)
 
     def get_val_item_3d(self, tile_ref, i):
@@ -347,7 +348,7 @@ class RPDataset(Dataset):
         assert np.sum(annot) > 0
         assert image.shape[2] == 3 # should be RGB
         annot_tile = annot[y:y+self.out_w, x:x+self.out_w]
-        target, mask = annot_to_target_and_mask(annot_tile, self.target_classes)
+        target, mask = annot_to_target_and_mask(annot_tile)
         mask = mask.astype(np.float32)
         mask = torch.from_numpy(mask)
         target = target.astype(np.int64)
