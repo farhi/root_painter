@@ -33,21 +33,22 @@ def is_image(fname):
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff', '.npy'}
     return any(fname.lower().endswith(ext) for ext in extensions)
 
-def load_image(photo_path):
-    photo = imread(photo_path)
-    # sometimes photo is a list where first element is the photo
-    if len(photo.shape) == 1:
-        photo = photo[0]
+def load_image(image_path):
+    if image_path.endswith('.npy'):
+        return np.load(image_path, mmap_mode='c')
+    image = imread(image_path)
+    # sometimes image is a list where first element is the image
+    if len(image.shape) == 1:
+        image = image[0]
     # if 4 channels then convert to rgb
     # (presuming 4th channel is alpha channel)
-    if len(photo.shape) > 2 and photo.shape[2] == 4:
-        photo = color.rgba2rgb(photo)
+    if len(image.shape) > 2 and image.shape[2] == 4:
+        return color.rgba2rgb(image)
 
     # if image is black and white then change it to rgb
     # TODO: train directly on B/W instead of doing this conversion.
-    if len(photo.shape) == 2:
-        photo = color.gray2rgb(photo)
-    return photo
+    if len(image.shape) == 2:
+        return color.gray2rgb(image)
 
 
 def norm_slice(img, min_v, max_v, brightness_percent):
