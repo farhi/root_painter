@@ -67,6 +67,9 @@ def norm_slice(img, min_v, max_v, brightness_percent):
 def np_to_q_image(slice_np):
     h, w = slice_np.shape
     image = np.zeros((h, w, 1), order='C').astype(np.uint8)
+    # TODO: don't rotate here, fix in original data and also provide
+    # user the option to change or have default rotation.
+    slice_np = np.rot90(slice_np, k=3)
     image[:, :, 0] = slice_np
     bytes_per_line = w
     q_image = QtGui.QImage(image, w, h,
