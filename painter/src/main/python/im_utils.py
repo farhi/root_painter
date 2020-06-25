@@ -29,7 +29,7 @@ from skimage.color import rgb2gray
 from PIL import Image
 
 def is_image(fname):
-    extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff'}
+    extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff', '.npy'}
     return any(fname.lower().endswith(ext) for ext in extensions)
 
 def load_image(photo_path):
