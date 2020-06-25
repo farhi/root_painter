@@ -52,6 +52,8 @@ def load_image(image_path):
 
 
 def norm_slice(img, min_v, max_v, brightness_percent):
+    if img.dtype != np.float32:
+        img = img.astype(np.float32)
     bright_v = (brightness_percent / 100)
     img[img < min_v] = min_v
     img[img > max_v] = max_v
@@ -61,7 +63,6 @@ def norm_slice(img, min_v, max_v, brightness_percent):
     img[img > 1] = 1.0
     img *= 255 
     return img
-
 
 def np_to_q_image(slice_np):
     h, w = slice_np.shape
