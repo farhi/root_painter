@@ -331,6 +331,7 @@ def get_coords(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     tile_coords = [(x, y) for x in x_coords for y in y_coords]
     return tile_coords
 
+
 def get_coords_3d(padded_im_shape, im_shape, in_tile_shape, out_tile_shape):
     assert len(im_shape) == 3, str(im_shape) # d, h, w
     depth_count = ceil(im_shape[0] / out_tile_shape[0])
@@ -421,5 +422,4 @@ def load_image(image_path):
     # TODO: train directly on B/W instead of doing this conversion.
     if len(image.shape) == 2:
         image = color.gray2rgb(image)
-
     return image, dims
