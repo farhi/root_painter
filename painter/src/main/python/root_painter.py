@@ -92,6 +92,7 @@ class RootPainter(QtWidgets.QMainWindow):
         modifiers = QtWidgets.QApplication.keyboardModifiers()
         alt_down = (modifiers & QtCore.Qt.AltModifier)
         shift_down = (modifiers & QtCore.Qt.ShiftModifier)
+        ctrl_down = (modifiers & QtCore.Qt.ControlModifier)
 
         if alt_down or shift_down:
             # change by 10% (nearest int) or 1 (min)
@@ -102,6 +103,11 @@ class RootPainter(QtWidgets.QMainWindow):
                 self.scene.brush_size -= increment
             self.scene.brush_size = max(1, self.scene.brush_size)
             self.update_cursor()
+        elif ctrl_down:
+            if scroll_up:
+                self.axial_nav.axial_slider.setValue(self.axial_nav.slice_idx + 1)
+            else:
+                self.axial_nav.axial_slider.setValue(self.axial_nav.slice_idx - 1)
         else:
             if scroll_up:
                 self.graphics_view.zoom *= 1.1
