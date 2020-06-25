@@ -29,7 +29,7 @@ class AxialNav(QtWidgets.QWidget):
         self.initUI()
 
     def update_range(self, new_image):
-        slice_count = new_image.shape[-1]
+        slice_count = new_image.shape[0]
         self.max_slice_idx = slice_count - 1
         self.axial_slider.setMaximum(self.max_slice_idx)
         if self.slice_idx > self.max_slice_idx:

@@ -32,6 +32,7 @@ import json
 from functools import partial
 import copy
 
+import numpy as np
 from skimage.io import use_plugin
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
@@ -196,8 +197,8 @@ class RootPainter(QtWidgets.QMainWindow):
         """ 
         is_3d = True
         if is_3d:
-            w, h, d = self.img_data.shape
-            img = np.array(self.img_data[:, :, self.axial_nav.slice_idx])
+            d, h, w = self.img_data.shape
+            img = np.array(self.img_data[self.axial_nav.slice_idx, :, :])
             img = im_utils.norm_slice(img,
                                       self.contrast_slider.min_value,
                                       self.contrast_slider.max_value,
