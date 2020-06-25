@@ -545,6 +545,8 @@ class Trainer():
                 segmented = ensemble_segment_3d(model_paths, im, self.batch_size,
                                                 in_w, out_w, in_d,
                                                 out_d, len(classes))
+            else:
+                raise Exception(f"Unhandled dims:{dims}")
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
             # catch warnings as low contrast is ok here.
             with warnings.catch_warnings():
