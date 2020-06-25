@@ -55,11 +55,11 @@ def init_root_painter():
         contrast_presets = settings['contrast_presets']
 
         def reopen():
-            main_window = RootPainter(sync_dir, contrast_settings)
+            main_window = RootPainter(sync_dir, contrast_presets)
             main_window.closed.connect(reopen)
             main_window.show()
 
-        main_window = RootPainter(sync_dir)
+        main_window = RootPainter(sync_dir, contrast_presets)
         # close project causes reopen with missing project UI
         main_window.closed.connect(reopen)
         main_window.show()

@@ -56,6 +56,7 @@ from file_utils import maybe_save_annotation
 from instructions import send_instruction
 from axial_nav import AxialNav
 from contrast_slider import ContrastSlider
+import im_utils
 
 use_plugin("pil")
 
@@ -70,7 +71,7 @@ class RootPainter(QtWidgets.QMainWindow):
         self.send_instruction = partial(send_instruction,
                                         instruction_dir=self.instruction_dir,
                                         sync_dir=sync_dir)
-        self.contrast_presets = contrast_preset
+        self.contrast_presets = contrast_presets
         self.tracking = False
         self.image_pixmap_holder = None
         self.seg_pixmap_holder = None
