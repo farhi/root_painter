@@ -56,7 +56,7 @@ from nav import NavWidget
 from visibility_widget import VisibilityWidget
 from file_utils import last_fname_with_annotations
 from file_utils import get_annot_path
-from file_utils import maybe_save_annotation
+from file_utils import maybe_save_annotation_2d, maybe_save_annotation_3d
 from instructions import send_instruction
 from axial_nav import AxialNav
 from contrast_slider import ContrastSlider
@@ -382,9 +382,15 @@ class RootPainter(QtWidgets.QMainWindow):
     def segment_image(self, image_fnames):
         # send instruction to segment the new image.
         seg_classes = copy.deepcopy(self.classes)
-        # Tell server to segment the bg with 0 alpha
+        # Tell server to segment the bg with 0 alpha, appplied to 2D only
         assert seg_classes[0][0] == 'Background'
         seg_classes[0][1][3] = 0
+        # we assume .npy means 3D 
+        # We also assume that the files are either all 2D
+        # or all 3D
+        dimensions = 2
+        if image_fnames[0].endswith('.npy'):
+            dimensions = 3
         # send instruction to segment the new image.
         content = {
             "dataset_dir": self.dataset_dir,
@@ -392,7 +398,8 @@ class RootPainter(QtWidgets.QMainWindow):
             "file_names": image_fnames,
             "message_dir": self.message_dir,
             "model_dir": self.model_dir,
-            "classes": seg_classes
+            "classes": seg_classes,
+            "dimensions": dimensions
         }
         self.send_instruction('segment', content)
 
@@ -950,15 +957,15 @@ class RootPainter(QtWidgets.QMainWindow):
 
     def save_annotation(self):
         if self.image_path.endswith('.npy'): 
-            self.annot_path = maybe_save_annotation_3d(self.annot_data
+            self.annot_path = maybe_save_annotation_3d(self.annot_data,
                                                        self.annot_path,
                                                        self.fname,
                                                        self.train_annot_dir,
                                                        self.val_annot_dir)
         elif self.scene.annot_pixmap:
-            self.annot_path = maybe_save_annotation(self.proj_location,
-                                                    self.scene.annot_pixmap,
-                                                    self.annot_path,
-                                                    self.fname,
-                                                    self.train_annot_dir,
-                                                    self.val_annot_dir)
+            self.annot_path = maybe_save_annotation_2d(self.proj_location,
+                                                       self.scene.annot_pixmap,
+                                                       self.annot_path,
+                                                       self.fname,
+                                                       self.train_annot_dir,
+                                                       self.val_annot_dir)
