@@ -28,6 +28,7 @@ from skimage.transform import resize
 from skimage.color import rgb2gray
 from PIL import Image
 from PyQt5 import QtGui
+import qimage2ndarray 
 
 def is_image(fname):
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff', '.npy'}
@@ -64,18 +65,20 @@ def norm_slice(img, min_v, max_v, brightness_percent):
     img *= 255 
     return img
 
-def np_to_q_image(slice_np):
-    h, w = slice_np.shape
-    image = np.zeros((h, w, 1), order='C').astype(np.uint8)
-    # TODO: don't rotate here, fix in original data and also provide
-    # user the option to change or have default rotation.
-    slice_np = np.rot90(slice_np, k=3)
-    image[:, :, 0] = slice_np
-    bytes_per_line = w
-    q_image = QtGui.QImage(image, w, h,
-                           bytes_per_line,
-                           QtGui.QImage.Format_Grayscale8)
-    return q_image
+
+def annot_slice_to_pixmap(slice_np):
+    """ convert slice from the numpy annotation data
+        to a PyQt5 pixmap object """
+    # for now fg and bg colors are hard coded.
+    # later we plan to let the user specify these in the user interface.
+    bg_color = [0, 255, 0, 180]
+    fg_color = [255, 0, 0, 180]
+    np_rgb = np.zeros((slice_np.shape[1], slice_np.shape[2], 4))
+    np_rgb[:, :, 1] = slice_np[0] * 255 # green is bg
+    np_rgb[:, :, 0] = slice_np[1] * 255 # red is fg
+    np_rgb[:, :, 3] = np.sum(slice_np, axis=0) * 180 # alpha is defined
+    q_image = qimage2ndarray.array2qimage(np_rgb)
+    return QtGui.QPixmap.fromImage(q_image)
 
 
 def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
