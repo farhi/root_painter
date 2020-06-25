@@ -54,6 +54,8 @@ from file_utils import last_fname_with_annotations
 from file_utils import get_annot_path
 from file_utils import maybe_save_annotation
 from instructions import send_instruction
+from axial_nav import AxialNav
+from contrast_slider import ContrastSlider
 
 use_plugin("pil")
 
@@ -61,13 +63,14 @@ class RootPainter(QtWidgets.QMainWindow):
 
     closed = QtCore.pyqtSignal()
 
-    def __init__(self, sync_dir):
+    def __init__(self, sync_dir, contrast_presets):
         super().__init__()
         self.sync_dir = sync_dir
         self.instruction_dir = sync_dir / 'instructions'
         self.send_instruction = partial(send_instruction,
                                         instruction_dir=self.instruction_dir,
                                         sync_dir=sync_dir)
+        self.contrast_presets = contrast_preset
         self.tracking = False
         self.image_pixmap_holder = None
         self.seg_pixmap_holder = None
@@ -165,59 +168,102 @@ class RootPainter(QtWidgets.QMainWindow):
 
 
     def update_file(self, fpath):
-        # Save current annotation (if it exists) before moving on
-        self.save_annotation()
-
-        # save current annotation first
-        fname = os.path.basename(fpath)
-        # set first image from project to be current image
-        self.image_path = os.path.join(self.dataset_dir, fname)
-        self.png_fname = os.path.splitext(fname)[0] + '.png'
-        self.seg_path = os.path.join(self.seg_dir, self.png_fname)
-        self.annot_path = get_annot_path(self.png_fname,
-                                         self.train_annot_dir,
-                                         self.val_annot_dir)
+        """ Invoked when the file to view has been changed by the user.
+            Show image file and it's associated annotation and segmentation """
+        self.image_path = os.path.join(self.dataset_dir, os.path.basename(fpath))
         self.update_image()
-
-
+        self.segment_current_image()
+        self.update_window_title()
+        # clear history when moving to a new file
         self.scene.history = []
         self.scene.redo_list = []
 
-        self.update_seg()
-        self.update_annot()
-
-        self.segment_current_image()
-        self.update_window_title()
-
-
 
     def update_image(self):
-        # Will also update self.im_width and self.im_height
+        """ update image file data """
         assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
-        image_pixmap = QtGui.QPixmap(self.image_path)
-        im_size = image_pixmap.size()
-        im_width, im_height = im_size.width(), im_size.height()
-        assert im_width > 0, self.image_path
-        assert im_height > 0, self.image_path
-        self.graphics_view.image = image_pixmap # for resize later
-        self.im_width = im_width
-        self.im_height = im_height
+        self.img_data = im_utils.load_image(self.image_path)
+        self.update_image_with_contrast()
 
-        self.scene.setSceneRect(-15, -15, im_width+30, im_height+30)
 
-        # Used to replace the segmentation or annotation when they are not visible.
-        self.blank_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-        self.blank_pixmap.fill(Qt.transparent)
+    def update_image_with_contrast(self):
+        """ show the already loaded image we are looking at, at the specific
+            slice the user has specified and using the specific
+            user specified contrast settings.
+        """ 
+        is_3d = True
+        if is_3d:
+            w, h, d = self.img_data.shape
+            img = np.array(self.img_data[:, :, self.axial_nav.slice_idx])
+            img = im_utils.norm_slice(img,
+                                      self.contrast_slider.min_value,
+                                      self.contrast_slider.max_value,
+                                      self.contrast_slider.brightness_value)
+            q_image = im_utils.np_to_q_image(img)
+            image_pixmap = QtGui.QPixmap.fromImage(q_image)
+            im_size = image_pixmap.size()
+            im_width, im_height = im_size.width(), im_size.height()
+            assert im_width > 0
+            assert im_height > 0
+            self.graphics_view.image = image_pixmap # for resize later
+            self.im_width = im_width
+            self.im_height = im_height
+            self.scene.setSceneRect(-15, -15, im_width+30, im_height+30)
 
-        self.black_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-        self.black_pixmap.fill(Qt.black)
+            # Used to replace the segmentation or annotation when they are not visible.
+            self.blank_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
+            self.blank_pixmap.fill(Qt.transparent)
 
-        if self.image_pixmap_holder:
-            self.image_pixmap_holder.setPixmap(image_pixmap)
+            self.black_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
+            self.black_pixmap.fill(Qt.black)
+
+            fname = os.path.basename(self.image_path)
+            slice_str = str(self.axial_nav.slice_idx).zfill(3)
+            self.png_fname = f"{os.path.splitext(fname)[0]}_{slice_str}.png"
+            self.seg_path = os.path.join(self.seg_dir, self.png_fname)
+            self.annot_path = get_annot_path(self.png_fname,
+                                             self.train_annot_dir,
+                                             self.val_annot_dir)
+            if self.image_pixmap_holder:
+                self.image_pixmap_holder.setPixmap(image_pixmap)
+            else:
+                self.image_pixmap_holder = self.scene.addPixmap(image_pixmap)
+            if not self.image_visible:
+                self.image_pixmap_holder.setPixmap(self.black_pixmap)
+
         else:
-            self.image_pixmap_holder = self.scene.addPixmap(image_pixmap)
-        if not self.image_visible:
-            self.image_pixmap_holder.setPixmap(self.black_pixmap)
+            image_pixmap = QtGui.QPixmap(self.image_path)
+            im_size = image_pixmap.size()
+            im_width, im_height = im_size.width(), im_size.height()
+
+            assert im_width > 0, self.image_path
+            assert im_height > 0, self.image_path
+
+            self.graphics_view.image = image_pixmap # for resize later
+
+            self.im_width = im_width
+            self.im_height = im_height
+
+            self.scene.setSceneRect(-15, -15, im_width+30, im_height+30)
+
+            # Used to replace the segmentation or annotation when they are not visible.
+            self.blank_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
+            self.blank_pixmap.fill(Qt.transparent)
+
+            self.black_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
+            self.black_pixmap.fill(Qt.black)
+
+            if self.image_pixmap_holder:
+                self.image_pixmap_holder.setPixmap(image_pixmap)
+            else:
+                self.image_pixmap_holder = self.scene.addPixmap(image_pixmap)
+            if not self.image_visible:
+                self.image_pixmap_holder.setPixmap(self.black_pixmap)
+
+        self.update_seg() #  We show a specific slice at a time
+        self.update_annot() #  We show a specific slice at a time
+
+
 
 
     def update_seg(self):
@@ -436,6 +482,11 @@ class RootPainter(QtWidgets.QMainWindow):
         self.graphics_view = CustomGraphicsView()
         self.graphics_view.zoom_change.connect(self.update_cursor)
 
+        # axial slider
+        self.axial_nav = AxialNav()
+        self.axial_nav.show()
+        self.axial_nav.changed.connect(self.update_image_with_contrast)
+
         container_layout.addWidget(self.graphics_view)
         scene = GraphicsScene()
         scene.parent = self
@@ -622,6 +673,8 @@ class RootPainter(QtWidgets.QMainWindow):
         toggle_image_visibility_btn.triggered.connect(self.show_hide_image)
         view_menu.addAction(toggle_image_visibility_btn)
 
+        self.add_contrast_setting_options(view_menu)
+        
         # Network Menu
         network_menu = menu_bar.addMenu('Network')
 
@@ -653,6 +706,22 @@ class RootPainter(QtWidgets.QMainWindow):
         # network_menu.addAction(segment_image_btn)
         self.add_measurements_menu(menu_bar)
         self.add_extras_menu(menu_bar)
+
+    def add_contrast_setting_options(self, view_menu):
+        preset_count = 0 
+        for preset in self.contrast_presets:
+            def add_preset_option(new_preset, preset_count):
+                preset = new_preset
+                preset_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
+                                               f'{preset} contrast settings', self)
+                preset_btn.setShortcut(QtGui.QKeySequence(f"Alt+{preset_count}"))
+                preset_btn.setStatusTip(f'Use {preset} contrast settings')
+                def on_select():
+                    self.contrast_slider.preset_selected(preset)
+                preset_btn.triggered.connect(on_select)
+                view_menu.addAction(preset_btn)
+            preset_count += 1
+            add_preset_option(preset, preset_count)
 
     def add_brush(self, name, color_val, shortcut=None):
         color_action = QtWidgets.QAction(QtGui.QIcon(""), name, self)
@@ -700,7 +769,6 @@ class RootPainter(QtWidgets.QMainWindow):
             self.extract_regions_widget.show()
         region_props_btn.triggered.connect(show_extract_region_props)
         measurements_menu.addAction(region_props_btn)
-
 
     def show_extract_comp(self):
         self.extract_comp_widget = ExtractCompWidget()
