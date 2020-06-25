@@ -950,8 +950,7 @@ class RootPainter(QtWidgets.QMainWindow):
 
     def save_annotation(self):
         if self.image_path.endswith('.npy'): 
-            self.annot_path = maybe_save_annotation_3d(self.proj_location,
-                                                       self.annot_data
+            self.annot_path = maybe_save_annotation_3d(self.annot_data
                                                        self.annot_path,
                                                        self.fname,
                                                        self.train_annot_dir,

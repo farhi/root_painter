@@ -122,12 +122,12 @@ def maybe_save_annotation_2d(proj_location, annot_pixmap,
             # The process cannot access the file becausegc
             # it is being used by another process
             os.remove(temp_out)
-        except Exception as e:
-            print('Caught exception when trying to detele temp annot', e)
+        except Exception as exception:
+            print('Caught exception when trying to detele temp annot', exception)
     return annot_path
 
 
-def maybe_save_annotation_3d(proj_location, annot_data, annot_path,
+def maybe_save_annotation_3d(annot_data, annot_path,
                              fname, train_annot_dir, val_annot_dir):
 
     # if there is an existing annotation.
@@ -141,11 +141,11 @@ def maybe_save_annotation_3d(proj_location, annot_data, annot_path,
     else:
         # if there is not an existing annotation
         # and the annotation has some content
-        if np.sum(annot_data):
+        if np.sum(annot_data) > 0:
             # then find the best place to put it based on current counts.
             annot_dir = get_new_annot_target_dir(train_annot_dir, val_annot_dir)
             annot_path = os.path.join(annot_dir, fname)
-            annot_pixmap.save(annot_path, 'PNG')
+            np.save(annot_path, annot_data)
         else:
             # if the annotation did not have content.
             # and there was not an existing annotation
