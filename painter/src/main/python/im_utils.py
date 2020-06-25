@@ -15,6 +15,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 # pylint: disable=C0111, W0511
+# pylint: disable=E0401 # import error
+
 import os
 import warnings
 import glob
@@ -25,10 +27,10 @@ from skimage import color
 from skimage.io import imread, imsave
 from skimage import img_as_ubyte
 from skimage.transform import resize
-from skimage.color import rgb2gray
 from PIL import Image
 from PyQt5 import QtGui
-import qimage2ndarray 
+import qimage2ndarray
+
 
 def is_image(fname):
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff', '.npy'}
@@ -50,6 +52,7 @@ def load_image(image_path):
     # TODO: train directly on B/W instead of doing this conversion.
     if len(image.shape) == 2:
         return color.gray2rgb(image)
+    return image
 
 
 def norm_slice(img, min_v, max_v, brightness_percent):
@@ -62,7 +65,7 @@ def norm_slice(img, min_v, max_v, brightness_percent):
     img /= (max_v - min_v)
     img *= bright_v
     img[img > 1] = 1.0
-    img *= 255 
+    img *= 255
     return img
 
 
@@ -71,8 +74,6 @@ def annot_slice_to_pixmap(slice_np):
         to a PyQt5 pixmap object """
     # for now fg and bg colors are hard coded.
     # later we plan to let the user specify these in the user interface.
-    bg_color = [0, 255, 0, 180]
-    fg_color = [255, 0, 0, 180]
     np_rgb = np.zeros((slice_np.shape[1], slice_np.shape[2], 4))
     np_rgb[:, :, 1] = slice_np[0] * 255 # green is bg
     np_rgb[:, :, 0] = slice_np[1] * 255 # red is fg
