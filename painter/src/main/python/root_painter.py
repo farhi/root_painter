@@ -38,6 +38,7 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
+import qimage2ndarray 
 
 from about import AboutWindow, LicenseWindow
 from create_project import CreateProjectWidget
@@ -178,6 +179,11 @@ class RootPainter(QtWidgets.QMainWindow):
     def update_file(self, fpath):
         """ Invoked when the file to view has been changed by the user.
             Show image file and it's associated annotation and segmentation """
+
+        # if anything has happened then save it before loading the next file
+        if len(self.scene.history) > 1: 
+            self.save_annotation()
+
         self.image_path = os.path.join(self.dataset_dir, os.path.basename(fpath))
         self.update_image()
         self.segment_current_image()
@@ -191,10 +197,29 @@ class RootPainter(QtWidgets.QMainWindow):
         """ update image file data """
         assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
         self.img_data = im_utils.load_image(self.image_path)
+        
+        # TODO if an annotation exists then load it.
+        # self.seg_path = os.path.join(self.seg_dir, fname)
+        # self.annot_path = get_annot_path(fname,
+        #                                 self.train_annot_dir,
+        #                                 self.val_annot_dir)
+
+        # otherwise create empty annotation array
+        # if we are working with 3D data (npy file) and the
+        # file hasn't been found then create an empty array to be
+        # used for storing the annotation information.
+        # channel for bg (0) and fg (1)
+        self.annot_data = np.zeros([2] + list(self.img_data.shape))
+
         self.contrast_slider.update_range(self.img_data)
+
         self.axial_nav.update_range(self.img_data)
+        # used for saving the edited annotation information
+        # before changing slice
+        self.cur_slice_idx = self.axial_nav.slice_idx
         self.update_image_with_contrast()
 
+        
 
     def update_image_with_contrast(self):
         """ show the already loaded image we are looking at, at the specific
@@ -203,8 +228,10 @@ class RootPainter(QtWidgets.QMainWindow):
         """ 
         is_3d = True
         if is_3d:
+
             d, h, w = self.img_data.shape
             img = np.array(self.img_data[self.axial_nav.slice_idx, :, :])
+
             img = im_utils.norm_slice(img,
                                       self.contrast_slider.min_value,
                                       self.contrast_slider.max_value,
@@ -228,12 +255,8 @@ class RootPainter(QtWidgets.QMainWindow):
             self.black_pixmap.fill(Qt.black)
 
             fname = os.path.basename(self.image_path)
-            slice_str = str(self.axial_nav.slice_idx).zfill(3)
-            self.png_fname = f"{os.path.splitext(fname)[0]}_{slice_str}.png"
-            self.seg_path = os.path.join(self.seg_dir, self.png_fname)
-            self.annot_path = get_annot_path(self.png_fname,
-                                             self.train_annot_dir,
-                                             self.val_annot_dir)
+
+
             if self.image_pixmap_holder:
                 self.image_pixmap_holder.setPixmap(image_pixmap)
             else:
@@ -272,8 +295,6 @@ class RootPainter(QtWidgets.QMainWindow):
 
         self.update_seg() #  We show a specific slice at a time
         self.update_annot() #  We show a specific slice at a time
-
-
 
 
     def update_seg(self):
@@ -319,25 +340,48 @@ class RootPainter(QtWidgets.QMainWindow):
         if not self.seg_visible:
             self.seg_pixmap_holder.setPixmap(self.blank_pixmap)
 
+    def store_current_slice_annot(self):
+        """
+        Update self.annot_data at self.cur_slice_idx
+        so the values for fg and bg correspond to self.annot_pixmap)
+        """
+        slice_rgb_np = qimage2ndarray.rgb_view(self.annot_pixmap.toImage())
+        fg = slice_rgb_np[:, :, 0] > 0
+        bg = slice_rgb_np[:, :, 1] > 0
+        self.annot_data[0, self.cur_slice_idx] = bg
+        self.annot_data[1, self.cur_slice_idx] = fg
+
+
     def update_annot(self):
-        # if annot file is present then load
-        if self.annot_path and os.path.isfile(self.annot_path):
-            self.annot_pixmap = QtGui.QPixmap(self.annot_path)
+        """ Update the annotation the user views """
+        # if it's 3d then get the slice from the loaded numpy array
+        if self.image_path.endswith('.npy'):
+            # before updating the slice idx, store current annotation information
+            if hasattr(self, 'annot_pixmap'):
+                self.store_current_slice_annot()
+            self.cur_slice_idx = self.axial_nav.slice_idx
+            annot_slice = self.annot_data[:, self.axial_nav.slice_idx, :, :]
+            self.annot_pixmap = im_utils.annot_slice_to_pixmap(annot_slice)
         else:
-            # otherwise use blank
-            self.annot_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-            self.annot_pixmap.fill(Qt.transparent)
+            # if 2D, then load directory or use blank if missing.
+            # if annot file is present then load
+            if self.annot_path and os.path.isfile(self.annot_path):
+                self.annot_pixmap = QtGui.QPixmap(self.annot_path)
+            else:
+                # otherwise use blank
+                self.annot_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
+                self.annot_pixmap.fill(Qt.transparent)
+        # if annot_pixmap_holder is read then setPixmap
         if self.annot_pixmap_holder:
             self.annot_pixmap_holder.setPixmap(self.annot_pixmap)
         else:
+            # or create the holder with the loaded pixmap
             self.annot_pixmap_holder = self.scene.addPixmap(self.annot_pixmap)
         self.scene.annot_pixmap_holder = self.annot_pixmap_holder
         self.scene.annot_pixmap = self.annot_pixmap
         self.scene.history.append(self.scene.annot_pixmap.copy())
-
         if not self.annot_visible:
             self.annot_pixmap_holder.setPixmap(self.blank_pixmap)
-
 
     def segment_image(self, image_fnames):
         # send instruction to segment the new image.
@@ -611,7 +655,8 @@ class RootPainter(QtWidgets.QMainWindow):
                     # sometimes problems reading file.
                     # don't worry about this exception
             else:
-                print('no seg found', end=",")
+                pass
+                # print('no seg found', end=",")
             QtCore.QTimer.singleShot(500, check)
         QtCore.QTimer.singleShot(500, check)
 
@@ -912,6 +957,6 @@ class RootPainter(QtWidgets.QMainWindow):
             self.annot_path = maybe_save_annotation(self.proj_location,
                                                     self.scene.annot_pixmap,
                                                     self.annot_path,
-                                                    self.png_fname,
+                                                    self.fname,
                                                     self.train_annot_dir,
                                                     self.val_annot_dir)
