@@ -49,6 +49,18 @@ def load_image(photo_path):
     return photo
 
 
+def norm_slice(img, min_v, max_v, brightness_percent):
+    bright_v = (brightness_percent / 100)
+    img[img < min_v] = min_v
+    img[img > max_v] = max_v
+    img -= min_v
+    img /= (max_v - min_v)
+    img *= bright_v
+    img[img > 1] = 1.0
+    img *= 255 
+    return img
+
+
 def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
     """ for review.
     Output the pngs with the annotation overlaid next to it.
