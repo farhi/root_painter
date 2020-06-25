@@ -27,6 +27,7 @@ from skimage import img_as_ubyte
 from skimage.transform import resize
 from skimage.color import rgb2gray
 from PIL import Image
+from PyQt5 import QtGui
 
 def is_image(fname):
     extensions = {".jpg", ".png", ".jpeg", '.tif', '.tiff', '.npy'}
@@ -59,6 +60,17 @@ def norm_slice(img, min_v, max_v, brightness_percent):
     img[img > 1] = 1.0
     img *= 255 
     return img
+
+
+def np_to_q_image(slice_np):
+    h, w = slice_np.shape
+    image = np.zeros((h, w, 1), order='C').astype(np.uint8)
+    image[:, :, 0] = slice_np
+    bytes_per_line = w
+    q_image = QtGui.QImage(image, w, h,
+                           bytes_per_line,
+                           QtGui.QImage.Format_Grayscale8)
+    return q_image
 
 
 def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
