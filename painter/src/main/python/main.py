@@ -42,13 +42,20 @@ def init_root_painter():
                 exit()
             with open(settings_path, 'w') as json_file:
                 content = {
-                    "sync_dir": os.path.abspath(dir_path)
+                    "sync_dir": os.path.abspath(dir_path),
+                    "contrast_presets": {
+                        'Heart' : [-184, 303, 171],
+                        'Lungs' : [-759, 476, 114]
+                    }
                 }
                 json.dump(content, json_file, indent=4)
-        sync_dir = Path(json.load(open(settings_path, 'r'))['sync_dir'])
+
+        settings = json.load(open(settings_path, 'r'))
+        sync_dir = Path(settings['sync_dir'])
+        contrast_presets = settings['contrast_presets']
 
         def reopen():
-            main_window = RootPainter(sync_dir)
+            main_window = RootPainter(sync_dir, contrast_settings)
             main_window.closed.connect(reopen)
             main_window.show()
 
