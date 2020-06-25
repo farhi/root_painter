@@ -183,6 +183,8 @@ class RootPainter(QtWidgets.QMainWindow):
         """ update image file data """
         assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
         self.img_data = im_utils.load_image(self.image_path)
+        self.contrast_slider.update_range(self.img_data)
+        self.axial_nav.update_range(self.img_data)
         self.update_image_with_contrast()
 
 
@@ -481,6 +483,11 @@ class RootPainter(QtWidgets.QMainWindow):
 
         self.graphics_view = CustomGraphicsView()
         self.graphics_view.zoom_change.connect(self.update_cursor)
+
+        # contrast slider
+        self.contrast_slider = ContrastSlider(self.contrast_presets)
+        self.contrast_slider.show()
+        self.contrast_slider.changed.connect(self.update_image_with_contrast)
 
         # axial slider
         self.axial_nav = AxialNav()
