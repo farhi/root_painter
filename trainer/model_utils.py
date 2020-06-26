@@ -197,7 +197,7 @@ def ensemble_segment_2d(model_paths, image, bs, in_w, out_w, classes_rgba, thres
 
 
 def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
-                        out_d, num_classes, threshold=0.5):
+                        out_d, num_classes, threshold=0.5, aug=True):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
     pred_count = 0
@@ -212,12 +212,18 @@ def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
         else:
             pred_sum = preds
             pred_count = 1
-        # get flipped version too (test time augmentation)
-        flipped_im = np.fliplr(image)
-        flipped_pred = segment_3d(cnn, flipped_im, bs, in_w, out_w, in_d, out_d)
-        pred_sum += np.flip(flipped_pred, 2) # return to normal
-        pred_count += 1
-    return pred_sum / pred_count
+        if aug:
+            # get flipped version too (test time augmentation)
+            flipped_im = np.fliplr(image)
+            flipped_pred = segment_3d(cnn, flipped_im, bs, in_w, out_w, in_d, out_d)
+            pred_sum += np.flip(flipped_pred, 2) # return to normal
+            pred_count += 1
+
+    if pred_count > 1:
+        pred_sum = pred_sum / pred_count
+    if threshold is not None:
+        pred_sum = (pred_sum > threshold).astype(np.byte)
+    return pred_sum # don't need to divide if only one prediction
 
 
 def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
