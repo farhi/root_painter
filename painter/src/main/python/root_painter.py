@@ -391,6 +391,7 @@ class RootPainter(QtWidgets.QMainWindow):
         dimensions = 2
         if image_fnames[0].endswith('.npy'):
             dimensions = 3
+            seg_classes = ['Foreground'] 
         # send instruction to segment the new image.
         content = {
             "dataset_dir": self.dataset_dir,
