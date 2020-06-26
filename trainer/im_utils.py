@@ -76,13 +76,13 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
                 image = load_image(image_path)
                 annot = img_as_ubyte(imread(annot_path))
                 assert image.shape[2] == 3 # should be RGB
-            assert np.sum(annot) > 0 
+            assert np.sum(annot) > 0
             # also return fname for debugging purposes.
             return image, annot, fname, dims
-        except Exception as e:
-            raise e
+        except Exception as exception:
+            print('load_train_image_and_annot', exception)
             # This could be due to an empty annotation saved by the user.
-            # Which happens rarely due to deleting all labels in an 
+            # Which happens rarely due to deleting all labels in an
             # existing annotation and is not a problem.
             # give it some time and try again.
             time.sleep(0.1)
@@ -128,7 +128,7 @@ def annot_to_target_and_mask(annot, target_classes):
 
     # mask defines all places where something is defined.
     mask = (r_channel + g_channel + b_channel) > 0
-    
+
     # target defines the class at each pixel location.
     target = np.zeros(r_channel.shape)
 
@@ -196,7 +196,7 @@ def add_gaussian_noise(image, sigma):
     return image + gaussian_noise
 
 
-def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w, dims=2, in_d=None, out_d=None):
+def get_val_tile_refs(annot_dir, prev_tile_refs, in_shape, out_shape):
     """
     Get tile info which covers all annotated regions of the annotation dataset.
     The list must be structured such that an index can be used to refer to each example
@@ -204,12 +204,12 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w, dims=2, in_d=None,
 
     returns tile_refs (list)
         Each element of tile_refs is a list that includes:
-            * image file name (string) - for loading the image from disk during validation 
+            * image file name (string) - for loading the image from disk during validation
             * coord (x int, y int) - for addressing the location within the padded image
             * annot_mtime (int)
                 The image annotation may get updated by the user at any time.
                 We can use the mtime to check for this.
-                If the annotation has changed then we need to retrieve tile 
+                If the annotation has changed then we need to retrieve tile
                 coords for this image again. The reason for this is that we
                 only want tile coords with annotations in. The user may have added or removed
                 annotation in part of an image. This could mean a different set of coords (or
@@ -217,16 +217,17 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w, dims=2, in_d=None,
 
     Parameter prev_tile_refs is used for comparing both file names and mtime.
 
-    The annot_dir folder should be checked for any new files (not in prev_tile_refs) or files with
-    an mtime different from prev_tile_refs. For these file, the image should be loaded and new tile_refs
-    should be retrieved. For all other images the tile_refs from prev_tile_refs can be used.
+    The annot_dir folder should be checked for any new files (not in
+    prev_tile_refs) or files with an mtime different from prev_tile_refs. For these
+    file, the image should be loaded and new tile_refs should be retrieved. For all
+    other images the tile_refs from prev_tile_refs can be used.
     """
     tile_refs = []
     cur_annot_fnames = ls(annot_dir)
     prev_annot_fnames = [r[0] for r in prev_tile_refs]
     all_annot_fnames = set(cur_annot_fnames + prev_annot_fnames)
 
-    for fname in all_annot_fnames: 
+    for fname in all_annot_fnames:
         # get existing coord refs for this image
         prev_refs = [r for r in prev_tile_refs if r[0] == fname]
         prev_mtimes = [r[2] for r in prev_tile_refs if r[0] == fname]
@@ -243,33 +244,33 @@ def get_val_tile_refs(annot_dir, prev_tile_refs, in_w, out_w, dims=2, in_d=None,
             if cur_mtime > prev_mtime:
                 need_new_refs = True
         if need_new_refs:
-            if in_d:
-                new_file_refs = get_val_tile_refs_for_annot_3d(annot_dir, fname,   
-                                                               in_w, out_w, in_d, out_d)
+            if len(in_shape) > 2 and in_shape[0] > 3: # RGB could still be 2D
+                new_file_refs = get_val_tile_refs_for_annot_3d(annot_dir, fname,
+                                                               in_shape, out_shape)
             else:
-                new_file_refs = get_val_tile_refs_for_annot(annot_dir, fname, in_w, out_w)
+                new_file_refs = get_val_tile_refs_for_annot(annot_dir, fname,
+                                                            in_shape, out_shape)
             tile_refs += new_file_refs
         else:
             tile_refs += prev_refs
     return tile_refs
 
 
-def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
-    width_diff = in_w - out_w
+def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_shape, out_shape):
+    width_diff = in_shape[1] - out_shape[1]
     pad_width = width_diff // 2
     annot_path = os.path.join(annot_dir, annot_fname)
     annot = img_as_ubyte(imread(annot_path))
     new_file_refs = []
     annot_path = os.path.join(annot_dir, annot_fname)
-    padded_im_shape = (annot.shape[0] + (pad_width * 2), 
+    padded_im_shape = (annot.shape[0] + (pad_width * 2),
                        annot.shape[1] + (pad_width * 2))
-    out_tile_shape = (out_w, out_w)
     coords = get_coords(padded_im_shape, annot.shape,
-                        in_tile_shape=(in_w, in_w, 3),
-                        out_tile_shape=out_tile_shape)
+                        in_tile_shape=in_shape,
+                        out_tile_shape=out_shape)
     mtime = os.path.getmtime(annot_path)
     for (x, y) in coords:
-        annot_tile = annot[y:y+out_w, x:x+out_w]
+        annot_tile = annot[y:y+out_shape[1], x:x+out_shape[1]]
         # we only want to validate on annotation tiles
         # which have annotation information.
         if np.sum(annot_tile):
@@ -277,29 +278,26 @@ def get_val_tile_refs_for_annot(annot_dir, annot_fname, in_w, out_w):
             new_file_refs.append([annot_fname, [x, y], mtime, None])
     return new_file_refs
 
-def get_val_tile_refs_for_annot_3d(annot_dir, annot_fname, in_w, out_w, in_d, out_d):
+def get_val_tile_refs_for_annot_3d(annot_dir, annot_fname, in_shape, out_shape):
     """
     Each element of tile_refs is a list that includes:
-        * image file name (string) - for loading the image from disk during validation 
+        * image file name (string) - for loading the image from disk during validation
         * coord (x int, y int) - for addressing the location within the padded image
         * annot_mtime (int)
         * cached performance for this tile with previous (current best) model.
           Initialized to None but otherwise [tp, fp, tn, fn]
     """
-    width_diff = in_w - out_w
-    pad_width = width_diff // 2
     annot_path = os.path.join(annot_dir, annot_fname)
     annot = np.load(annot_path, mmap_mode='c')
     new_file_refs = []
     annot_shape = annot.shape[1:]
-    out_tile_shape = (out_w, out_w)
     coords = get_coords_3d(annot_shape, annot_shape,
-                            in_tile_shape=(in_d, in_w, in_w),
-                            out_tile_shape=(out_d, out_w, out_w))
+                           in_tile_shape=in_shape,
+                           out_tile_shape=out_shape)
 
     mtime = os.path.getmtime(annot_path)
     for (x, y, z) in coords:
-        annot_tile = annot[:, z:z+out_d, y:y+out_w, x:x+out_w]
+        annot_tile = annot[:, z:z+out_shape[0], y:y+out_shape[1], x:x+out_shape[2]]
         # we only want to validate on annotation tiles
         # which have annotation information.
         if np.sum(annot_tile):
