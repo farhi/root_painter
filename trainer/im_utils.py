@@ -390,9 +390,13 @@ def save_then_move(out_path, seg, dims):
     temp_path = os.path.join('/tmp', fname)
     if dims == 2:
         imsave(temp_path, seg)
-    else:
+    elif out_path.endswith('.nii.gz'):
         img = nib.Nifti1Image(seg, np.eye(4))
         img.to_filename(temp_path)
+    elif out_path.endswith('.npy'):
+        np.save(temp_path, seg)
+    else:
+        raise Exception(f'Unhandled combination of dims: {dims} and {out_path}')
     shutil.move(temp_path, out_path)
 
 
