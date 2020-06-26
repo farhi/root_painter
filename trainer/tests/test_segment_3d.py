@@ -166,9 +166,8 @@ def test_3d_segment_instruction():
     assert np.sum(seg) > 0
 
     # assert that it has the same shape as the input image
-    # (although we use depth first now)
-    assert seg.shape[0] == 2 # channel for fg and bg
-    assert seg[0].shape[::-1] == example_image.shape
+    # We use depth first now
+    assert seg.shape[::-1] == example_image.shape
     # assert that the segment instruction has been deleted.
     assert not os.path.isfile(fpath)
 
