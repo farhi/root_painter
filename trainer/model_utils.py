@@ -23,7 +23,6 @@ import glob
 import math
 import numpy as np
 import torch
-from torch.nn.functional import softmax
 from skimage.io import imread
 from skimage import img_as_float32
 import im_utils
@@ -48,6 +47,7 @@ def load_model(model_path, num_classes, dimensions):
     try:
         model.load_state_dict(torch.load(model_path))
         model = torch.nn.DataParallel(model)
+    # pylint: disable=broad-except, bare-except
     except:
         model = torch.nn.DataParallel(model)
         model.load_state_dict(torch.load(model_path))
@@ -85,10 +85,10 @@ def get_class_metrics(get_val_annots, get_seg, classes) -> list:
     Segment the validation images and
     return metrics for each of the classes.
     """
-    class_metrics = [{ 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class': c} for c in classes]
+    class_metrics = [{'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'class': c} for c in classes]
     classes_rgb = [c[1][:3] for c in classes]
 
-    # for each image 
+    # for each image
     for fname, annot in get_val_annots():
         assert annot.dtype == np.ubyte, str(annot.dtype)
 
@@ -98,14 +98,13 @@ def get_class_metrics(get_val_annots, get_seg, classes) -> list:
 
         # load sed, returns a channel for each class
         seg = get_seg(fname)
-        
+
         # for each class
-        for i, c in enumerate(classes):
-            class_rgb = c[1]
+        for i, class_rgb in enumerate(classes_rgb):
             y_true = im_utils.get_class_map(annot, class_rgb)
             y_pred = seg == i
             assert y_true.shape == y_pred.shape, str(y_true.shape) + str(y_pred.shape)
-            
+
             # only compute metrics on regions where annotation is defined.
             y_true = y_true.reshape(-1)[y_defined > 0]
             y_pred = y_pred.reshape(-1)[y_defined > 0]
@@ -117,24 +116,25 @@ def get_class_metrics(get_val_annots, get_seg, classes) -> list:
                                                             y_true == 0))
             class_metrics[i]['fn'] += np.sum(np.logical_and(y_pred == 0,
                                                             y_true == 1))
-    for i, m in enumerate(class_metrics):
-        class_metrics[i] = get_metrics(m['tp'], m['fp'], m['tn'], m['fn'])
+    for i, metric in enumerate(class_metrics):
+        class_metrics[i] = get_metrics(metric['tp'], metric['fp'],
+                                       metric['tn'], metric['fn'])
     return class_metrics
 
 
-def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, bs, classes):
+def get_val_metrics(cnn, val_annot_dir, dataset_dir, in_w, out_w, batch_size, classes):
     # This is no longer used.
     start = time.time()
     fnames = ls(val_annot_dir)
     fnames = [a for a in fnames if im_utils.is_photo(a)]
     cnn.half()
-    
+
     def get_seg(fname):
         image_path_part = os.path.join(dataset_dir, os.path.splitext(fname)[0])
         image_path = glob.glob(image_path_part + '.*')[0]
         image = im_utils.load_image(image_path)
-        predicted = segment(cnn, image, bs, in_w, out_w)
-        
+        predicted = segment(cnn, image, batch_size, in_w, out_w)
+
         # Need to convert to predicted class.
         predicted = np.argmax(predicted, 0)
         return predicted
@@ -156,9 +156,9 @@ def save_if_better(model_dir, cur_model, prev_model_path, cur_dice, prev_dice):
 
     # convert the nans as they don't work in comparison
     if math.isnan(cur_dice):
-        cur_loss = 0
+        cur_dice = 0
     if math.isnan(prev_dice):
-        prev_loss = 0
+        prev_dice = 0
     print('prev dice', str(round(prev_dice, 5)).ljust(7, '0'),
           'cur dice', str(round(cur_dice, 5)).ljust(7, '0'))
     if cur_dice > prev_dice:
@@ -174,7 +174,7 @@ def save_if_better(model_dir, cur_model, prev_model_path, cur_dice, prev_dice):
     return False
 
 
-def ensemble_segment_2d(model_paths, image, bs, in_w, out_w, classes_rgba, threshold=0.5):
+def ensemble_segment_2d(model_paths, image, batch_size, in_w, out_w, classes_rgba):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
     # then add predictions from the previous models to form an ensemble
@@ -184,19 +184,19 @@ def ensemble_segment_2d(model_paths, image, bs, in_w, out_w, classes_rgba, thres
         # where as this is assumed implicity with 3d
         cnn = load_model(model_path, len(classes_rgba) // 2, dimensions=2)
         cnn.half()
-        preds = segment(cnn, image, bs, in_w, out_w)
+        preds = segment(cnn, image, batch_size, in_w, out_w)
         if pred_sum is not None:
             pred_sum += preds
         else:
             pred_sum = preds
         # get flipped version too (test time augmentation)
         flipped_im = np.fliplr(image)
-        flipped_pred = segment(cnn, flipped_im, bs, in_w, out_w)
+        flipped_pred = segment(cnn, flipped_im, batch_size, in_w, out_w)
         pred_sum += np.flip(flipped_pred, 2) # return to normal
     return im_utils.seg_to_rgba(pred_sum, classes_rgba)
 
 
-def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
+def ensemble_segment_3d(model_paths, image, batch_size, in_w, out_w, in_d,
                         out_d, num_classes, threshold=0.5, aug=True):
     """ Average predictions from each model specified in model_paths """
     pred_sum = None
@@ -205,7 +205,7 @@ def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
     for model_path in model_paths:
         cnn = load_model(model_path, num_classes, dimensions=3)
         cnn.half()
-        preds = segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d)
+        preds = segment_3d(cnn, image, batch_size, in_w, out_w, in_d, out_d)
         if pred_sum is not None:
             pred_sum += preds
             pred_count += 1
@@ -215,7 +215,7 @@ def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
         if aug:
             # get flipped version too (test time augmentation)
             flipped_im = np.fliplr(image)
-            flipped_pred = segment_3d(cnn, flipped_im, bs, in_w, out_w, in_d, out_d)
+            flipped_pred = segment_3d(cnn, flipped_im, batch_size, in_w, out_w, in_d, out_d)
             pred_sum += np.flip(flipped_pred, 2) # return to normal
             pred_count += 1
 
@@ -226,7 +226,7 @@ def ensemble_segment_3d(model_paths, image, bs, in_w, out_w, in_d,
     return pred_sum # don't need to divide if only one prediction
 
 
-def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
+def segment_3d(cnn, image, batch_size, in_w, out_w, in_d, out_d):
 
     # image shape = (depth, height, width)
     # in_w is both w and h
@@ -247,13 +247,12 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
 
     depth_diff = in_d - out_d
     pad_depth = depth_diff // 2
-    
+
     padded_im = im_utils.pad_3d(image, pad_width, pad_depth)
     coords = im_utils.get_coords_3d(padded_im.shape, image.shape,
-                                     in_tile_shape=(in_d, in_w, in_w),
-                                     out_tile_shape=(out_d, out_w, out_w))
+                                    in_tile_shape=(in_d, in_w, in_w),
+                                    out_tile_shape=(out_d, out_w, out_w))
     coord_idx = 0
-    batches = []
 
     # segmentation for the full image
     # assign once we get number of classes from the cnn output shape.
@@ -262,15 +261,15 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
     while coord_idx < len(coords):
         tiles_to_process = []
         coords_to_process = []
-        for _ in range(bs):
+        for _ in range(batch_size):
             if coord_idx < len(coords):
                 coord = coords[coord_idx]
-                x, y, z = coord
-                tile = padded_im[z:z+in_d,
-                                 y:y+in_w,
-                                 x:x+in_w]
+                x_coord, y_coord, z_coord = coord
+                tile = padded_im[z_coord:z_coord+in_d,
+                                 y_coord:y_coord+in_w,
+                                 x_coord:x_coord+in_w]
                 # need to add channel dimension for GPU processing.
-                tile = np.expand_dims(tile, axis=0) 
+                tile = np.expand_dims(tile, axis=0)
                 assert tile.shape[1] == in_d, str(tile.shape)
                 assert tile.shape[2] == in_w, str(tile.shape)
                 assert tile.shape[3] == in_w, str(tile.shape)
@@ -294,16 +293,19 @@ def segment_3d(cnn, image, bs, in_w, out_w, in_d, out_d):
             seg = np.zeros(seg_shape)
 
         out_tiles = pred_np.reshape((len(tiles_for_gpu), num_classes, out_d, out_w, out_w))
-        
+
 
         # add the predictions from the gpu to the output segmentation
         # use their correspond coordinates
-        for tile, (x, y, z) in zip(out_tiles, coords_to_process):
+        for tile, (x_coord, y_coord, z_coord) in zip(out_tiles, coords_to_process):
             # tile.shape[0] is the number of classes.
-            seg[:, z:z+tile.shape[1], y:y+tile.shape[2], x:x+tile.shape[3]] = tile
+            seg[:,
+                z_coord:z_coord+tile.shape[1],
+                y_coord:y_coord+tile.shape[2],
+                x_coord:x_coord+tile.shape[3]] = tile
     return seg
 
-def segment(cnn, image, bs, in_w, out_w):
+def segment(cnn, image, batch_size, in_w, out_w):
     # Return prediction for each pixel in the image
     # The cnn will give a the output as channels where
     # each channel corresponds to a specific class 'probability'
@@ -317,7 +319,6 @@ def segment(cnn, image, bs, in_w, out_w):
                                  in_tile_shape=(in_w, in_w, 3),
                                  out_tile_shape=(out_w, out_w))
     coord_idx = 0
-    batches = []
 
     # segmentation for the full image
     # assign once we get number of classes from the cnn output shape.
@@ -326,12 +327,12 @@ def segment(cnn, image, bs, in_w, out_w):
     while coord_idx < len(coords):
         tiles_to_process = []
         coords_to_process = []
-        for _ in range(bs):
+        for _ in range(batch_size):
             if coord_idx < len(coords):
                 coord = coords[coord_idx]
-                x, y = coord
-                tile = padded_im[y:y+in_w,
-                                 x:x+in_w]
+                x_coord, y_coord = coord
+                tile = padded_im[y_coord:y_coord+in_w,
+                                 x_coord:x_coord+in_w]
                 assert tile.shape[0] == in_w
                 assert tile.shape[1] == in_w
                 tile = img_as_float32(tile)
@@ -354,10 +355,12 @@ def segment(cnn, image, bs, in_w, out_w):
             seg = np.zeros(seg_shape)
 
         out_tiles = pred_np.reshape((len(tiles_for_gpu), num_classes, out_w, out_w))
-        
+
         # add the predictions from the gpu to the output segmentation
         # use their correspond coordinates
-        for tile, (x, y) in zip(out_tiles, coords_to_process):
+        for tile, (x_coord, y_coord) in zip(out_tiles, coords_to_process):
             # tile has channels first so move to channels last.
-            seg[:, y:y+tile.shape[1], x:x+tile.shape[2]] = tile
+            seg[:,
+                y_coord:y_coord+tile.shape[1],
+                x_coord:x_coord+tile.shape[2]] = tile
     return seg
