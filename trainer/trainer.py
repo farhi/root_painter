@@ -60,8 +60,6 @@ class Trainer():
         self.train_config = None
         self.model = None
         self.first_loop = True
-
-
         mem_per_item = 3800000000
         total_mem = 0
         for i in range(torch.cuda.device_count()):
@@ -349,11 +347,12 @@ class Trainer():
     def get_new_val_tiles_refs(self):
         return im_utils.get_val_tile_refs(self.train_config['val_annot_dir'],
                                           copy.deepcopy(self.val_tile_refs),
-                                          self.train_config['in_w'],
-                                          self.train_config['out_w'],
-                                          self.train_config['dimensions'],
-                                          self.train_config['in_d'],
-                                          self.train_config['out_d'])
+                                          in_shape=(self.train_config['in_d'],
+                                                    self.train_config['in_w'],
+                                                    self.train_config['in_w']),
+                                          out_shape=(self.train_config['out_d'],
+                                                     self.train_config['out_w'],
+                                                     self.train_config['out_w']))
 
     def log_metrics(self, name, metrics):
         fname = datetime.today().strftime('%Y-%m-%d')
@@ -515,6 +514,9 @@ class Trainer():
         # Segmentations are always saved as PNG for 2d or nifty for 3d
         if fname.endswith('.nii.gz'):
             out_path = os.path.join(seg_dir, fname)
+        elif fname.endswith('.npy'):
+            # segment to nifty as they don't get loaded repeatedly in training.
+            out_path = os.path.join(seg_dir, os.path.splitext(fname)[0] + '.nii.gz')
         else:
             out_path = os.path.join(seg_dir, os.path.splitext(fname)[0] + '.png')
         if os.path.isfile(out_path):
@@ -544,7 +546,8 @@ class Trainer():
             elif dims == 3:
                 segmented = ensemble_segment_3d(model_paths, im, self.batch_size,
                                                 in_w, out_w, in_d,
-                                                out_d, len(classes))
+                                                out_d, 1, aug=False)
+                segmented = segmented[1] # fg only
             else:
                 raise Exception(f"Unhandled dims:{dims}")
             print(f'ensemble segment {fname}, dur', round(time.time() - seg_start, 2))
