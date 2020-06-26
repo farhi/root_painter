@@ -20,15 +20,16 @@ from torch.nn.functional import cross_entropy
 
 
 def combined_loss(predictions, labels):
+    """ combine CE and dice """
     loss_sum = 0
     if torch.sum(labels[:, 1]):
         loss_sum += dice_loss(predictions, labels[:, 1])
     loss_sum += 0.3 * cross_entropy(predictions, labels[:, 1])
     return loss_sum
- 
+
 
 def dice_loss(predictions, labels):
-    """ based on loss function from V-Net paper """
+    """ soft dice to help handle imbalanced classes """
     softmaxed = softmax(predictions, 1)
     predictions = softmaxed[:, 1, :]  # just the root probability.
     labels = labels.float()
@@ -37,5 +38,4 @@ def dice_loss(predictions, labels):
     intersection = torch.sum(torch.mul(preds, labels))
     union = torch.sum(preds) + torch.sum(labels)
     dice = ((2 * intersection) / (union))
-    dice_loss = 1 - dice
-    return dice_loss
+    return 1 - dice
