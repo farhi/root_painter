@@ -199,9 +199,18 @@ class RootPainter(QtWidgets.QMainWindow):
         """ update image file data """
         assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
         self.img_data = im_utils.load_image(self.image_path)
+        fname = os.path.basename(self.image_path) 
+        
+        # if the image file name is numpy then we use
+        # nifty for the segmentation   
+        if fname.endswith('.npy'):
+            seg_fname = os.path.splitext(fname)[0] + '.nii.gz' 
+        else:
+            seg_fname = os.path.splitext(fname)[0] + '.png' 
+
+        self.seg_path = os.path.join(self.seg_dir, seg_fname)
 
         # TODO if an annotation exists then load it.
-        # self.seg_path = os.path.join(self.seg_dir, fname)
         # self.annot_path = get_annot_path(fname,
         #                                 self.train_annot_dir,
         #                                 self.val_annot_dir)
@@ -212,7 +221,8 @@ class RootPainter(QtWidgets.QMainWindow):
         # used for storing the annotation information.
         # channel for bg (0) and fg (1)
         self.annot_data = np.zeros([2] + list(self.img_data.shape))
-
+        if os.path.isfile(self.seg_path):
+            self.seg_data = im_utils.load_image(self.seg_path)
         self.contrast_slider.update_range(self.img_data)
 
         self.axial_nav.update_range(self.img_data)
@@ -297,7 +307,10 @@ class RootPainter(QtWidgets.QMainWindow):
         # if seg file is present then load.
         if os.path.isfile(self.seg_path):
             self.seg_mtime = os.path.getmtime(self.seg_path)
-            self.seg_pixmap = QtGui.QPixmap(self.seg_path)
+            if self.seg_path.endswith('.png'): 
+                self.seg_pixmap = QtGui.QPixmap(self.seg_path)
+            else:
+                self.update_seg_slice_pixmap() # 3d specific
             self.nav.next_image_button.setText('Save && Next >')
             if hasattr(self, 'vis_widget'):
                 self.vis_widget.seg_checkbox.setText('Segmentation (S)')
@@ -646,7 +659,13 @@ class RootPainter(QtWidgets.QMainWindow):
                     # seg_mtime is None before the seg is loaded.
                     if not self.seg_mtime:
                         print('load seg from file.')
-                        self.seg_pixmap = QtGui.QPixmap(self.seg_path)
+                        if self.seg_path.endswith('.png'):
+                            self.seg_pixmap = QtGui.QPixmap(self.seg_path)
+                        else:
+                            # assume numpy
+                            self.seg_data = im_utils.load_image(self.seg_path)
+                            self.update_seg_slice_pixmap()
+
                         self.seg_mtime = new_mtime
                         self.nav.next_image_button.setText('Save && Next >')
                         self.nav.next_image_button.setEnabled(True)
@@ -663,7 +682,10 @@ class RootPainter(QtWidgets.QMainWindow):
                 # print('no seg found', end=",")
             QtCore.QTimer.singleShot(500, check)
         QtCore.QTimer.singleShot(500, check)
-
+    
+    def update_seg_slice_pixmap(self):
+        seg_slice = self.seg_data[self.axial_nav.slice_idx, :, :]
+        self.seg_pixmap = im_utils.seg_slice_to_pixmap(seg_slice)
 
     def close_project_window(self):
         self.close()

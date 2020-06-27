@@ -30,6 +30,7 @@ from skimage.transform import resize
 from PIL import Image
 from PyQt5 import QtGui
 import qimage2ndarray
+import nibabel as nib
 
 
 def is_image(fname):
@@ -39,6 +40,9 @@ def is_image(fname):
 def load_image(image_path):
     if image_path.endswith('.npy'):
         return np.load(image_path, mmap_mode='c')
+    if image_path.endswith('.nii.gz'):
+        image = nib.load(image_path)
+        return np.array(image.dataobj)
     image = imread(image_path)
     # sometimes image is a list where first element is the image
     if len(image.shape) == 1:
@@ -78,6 +82,15 @@ def annot_slice_to_pixmap(slice_np):
     np_rgb[:, :, 1] = slice_np[0] * 255 # green is bg
     np_rgb[:, :, 0] = slice_np[1] * 255 # red is fg
     np_rgb[:, :, 3] = np.sum(slice_np, axis=0) * 180 # alpha is defined
+    q_image = qimage2ndarray.array2qimage(np_rgb)
+    return QtGui.QPixmap.fromImage(q_image)
+
+
+def seg_slice_to_pixmap(slice_np):
+    """ convert slice from the numpy segmentation data
+        to a PyQt5 pixmap object """
+    np_rgb = np.zeros((slice_np.shape[0], slice_np.shape[1], 4))
+    np_rgb[slice_np > 0] = [0, 255, 255, 180]
     q_image = qimage2ndarray.array2qimage(np_rgb)
     return QtGui.QPixmap.fromImage(q_image)
 
