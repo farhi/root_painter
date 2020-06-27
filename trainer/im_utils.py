@@ -404,7 +404,7 @@ def load_image(image_path):
         image = np.load(image_path, mmap_mode='c')
         dims = 3
     elif image_path.endswith('.nii.gz'):
-        # We don't currently use them during but it's useful to be
+        # We don't currently use them during training but it's useful to be
         # able to load nifty files directory to give the user
         # more convenient segmentation options.
         image = nib.load(image_path)
