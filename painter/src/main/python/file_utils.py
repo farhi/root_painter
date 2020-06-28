@@ -67,8 +67,10 @@ def get_new_annot_target_dir(train_annot_dir, val_annot_dir):
     """ Should we add new annotations to train or validation data? """
     train_annots = os.listdir(train_annot_dir)
     val_annots = os.listdir(val_annot_dir)
-    train_annots = [f for f in train_annots if splitext(f)[1] == '.png']
-    val_annots = [f for f in val_annots if splitext(f)[1] == '.png']
+
+    train_annots = [f for f in train_annots if (splitext(f)[1] in ['.png', '.npy'])]
+    val_annots = [f for f in val_annots if (splitext(f)[1] in ['.png', '.npy'])]
+
     num_train_annots = len(train_annots)
     num_val_annots = len(val_annots)
     # first aim to get at least one annotation in train and validation.
