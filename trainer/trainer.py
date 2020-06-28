@@ -90,9 +90,11 @@ class Trainer():
                 # can take a while so checks for
                 # new instructions are also made inside
                 self.val_tile_refs = self.get_new_val_tiles_refs()
-                (tps, fps, tns, fns) = self.one_epoch(self.model, 'train')
-                train_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
-                self.log_metrics('train', train_m)
+                epoch_result = self.one_epoch(self.model, 'train')
+                if epoch_result:
+                    (tps, fps, tns, fns) = epoch_result
+                    train_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
+                    self.log_metrics('train', train_m)
             if self.training:
 
                 self.validation()
@@ -237,7 +239,7 @@ class Trainer():
         annot_dir = self.train_config[f'{mode}_annot_dir']
         if not [is_image(a) for a in ls(annot_dir)]:
             print('quit because no annotations')
-            return
+            return None
 
         if self.first_loop:
             self.first_loop = False
@@ -380,7 +382,14 @@ class Trainer():
                                                            dims=self.train_config['dimensions'])
         self.val_tile_refs = self.get_new_val_tiles_refs()
         # for current model get errors for all tiles in the validation set.
-        (tps, fps, tns, fns) = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
+        epoch_result = self.one_epoch(copy.deepcopy(self.model), 'val', self.val_tile_refs)
+        if not epoch_result:
+            # if we didn't get anything back then it means the
+            # dataset did not contain any annotations so no need
+            # to proceed with validation.
+            return 
+        (tps, fps, tns, fns) = epoch_result
+    
         cur_m = get_metrics(np.sum(tps), np.sum(fps), np.sum(tns), np.sum(fns))
         self.log_metrics('cur_val', cur_m)
         prev_m = self.get_prev_model_metrics(prev_model)
