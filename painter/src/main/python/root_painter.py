@@ -183,8 +183,13 @@ class RootPainter(QtWidgets.QMainWindow):
             Show image file and it's associated annotation and segmentation """
 
         # if anything has happened then save it before loading the next file
-        if len(self.scene.history) > 1:
+        if len(self.scene.history) > 0:
+            if self.image_path.endswith('.npy'):
+                self.store_current_slice_annot()
+            # save annotation for current file before changing to new file.
             self.save_annotation()
+        else:
+            print('no history so not saving annotation')
 
         self.image_path = os.path.join(self.dataset_dir, os.path.basename(fpath))
         self.update_image()
@@ -200,7 +205,6 @@ class RootPainter(QtWidgets.QMainWindow):
         assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
         self.img_data = im_utils.load_image(self.image_path)
         fname = os.path.basename(self.image_path) 
-        
         # if the image file name is numpy then we use
         # nifty for the segmentation   
         if fname.endswith('.npy'):
@@ -209,18 +213,22 @@ class RootPainter(QtWidgets.QMainWindow):
             seg_fname = os.path.splitext(fname)[0] + '.png' 
 
         self.seg_path = os.path.join(self.seg_dir, seg_fname)
+        # if an annotation exists then load it.
+        self.annot_path = get_annot_path(fname,
+                                         self.train_annot_dir,
+                                         self.val_annot_dir)
+        if self.annot_path and os.path.isfile(self.annot_path):
+            self.annot_data = np.load(self.annot_path)
+        else:
+            # otherwise create empty annotation array
+            # if we are working with 3D data (npy file) and the
+            # file hasn't been found then create an empty array to be
+            # used for storing the annotation information.
+            # channel for bg (0) and fg (1)
+            self.annot_data = np.zeros([2] + list(self.img_data.shape))
 
-        # TODO if an annotation exists then load it.
-        # self.annot_path = get_annot_path(fname,
-        #                                 self.train_annot_dir,
-        #                                 self.val_annot_dir)
+        self.render_cur_annot_slice()
 
-        # otherwise create empty annotation array
-        # if we are working with 3D data (npy file) and the
-        # file hasn't been found then create an empty array to be
-        # used for storing the annotation information.
-        # channel for bg (0) and fg (1)
-        self.annot_data = np.zeros([2] + list(self.img_data.shape))
         if os.path.isfile(self.seg_path):
             self.seg_data = im_utils.load_image(self.seg_path)
         self.contrast_slider.update_range(self.img_data)
@@ -360,17 +368,22 @@ class RootPainter(QtWidgets.QMainWindow):
         self.annot_data[0, self.cur_slice_idx] = bg
         self.annot_data[1, self.cur_slice_idx] = fg
 
+    def render_cur_annot_slice(self):
+        self.cur_slice_idx = self.axial_nav.slice_idx
+        annot_slice = self.annot_data[:, self.axial_nav.slice_idx, :, :]
+        self.annot_pixmap = im_utils.annot_slice_to_pixmap(annot_slice)
 
     def update_annot(self):
         """ Update the annotation the user views """
         # if it's 3d then get the slice from the loaded numpy array
         if self.image_path.endswith('.npy'):
+            fname = os.path.basename(self.image_path)
+            
             # before updating the slice idx, store current annotation information
             if hasattr(self, 'annot_pixmap'):
                 self.store_current_slice_annot()
-            self.cur_slice_idx = self.axial_nav.slice_idx
-            annot_slice = self.annot_data[:, self.axial_nav.slice_idx, :, :]
-            self.annot_pixmap = im_utils.annot_slice_to_pixmap(annot_slice)
+
+            self.render_cur_annot_slice()
         else:
             # if 2D, then load directory or use blank if missing.
             # if annot file is present then load
@@ -658,7 +671,6 @@ class RootPainter(QtWidgets.QMainWindow):
                     new_mtime = os.path.getmtime(self.seg_path)
                     # seg_mtime is None before the seg is loaded.
                     if not self.seg_mtime:
-                        print('load seg from file.')
                         if self.seg_path.endswith('.png'):
                             self.seg_pixmap = QtGui.QPixmap(self.seg_path)
                         else:
