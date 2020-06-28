@@ -130,14 +130,24 @@ def maybe_save_annotation_2d(proj_location, annot_pixmap,
 def maybe_save_annotation_3d(annot_data, annot_path,
                              fname, train_annot_dir, val_annot_dir):
 
+    # make it small so 50mb only
+    annot_data = annot_data.astype(np.byte)
+    print('maybe save, annot_path=', annot_path)
     # if there is an existing annotation.
     if annot_path:
-        existing_annot = np.load(annot_path)
+        existing_annot = np.load(annot_path).astype(np.byte)
         # and the annot we are saving is different.
         if not np.array_equal(annot_data, existing_annot):
+            print('different from existing data')
             # Then we must over-write the previously saved annoation.
             # The user is performing an edit, possibly correcting an error.
-            np.save(annot_path, annot_data)
+            # First save to project folder as temp file.
+            # if the annotation is empty then delete the current annotation
+            if np.sum(annot_data) == 0:
+                os.remove(annot_path)
+            else:
+                # otherwise update the data.
+                np.save(annot_path, annot_data)
     else:
         # if there is not an existing annotation
         # and the annotation has some content
@@ -152,4 +162,5 @@ def maybe_save_annotation_3d(annot_data, annot_path,
             # then don't save anything, this data is useless for
             # training.
             print('not saving as annotation empty')
+
     return annot_path
