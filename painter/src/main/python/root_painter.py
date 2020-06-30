@@ -360,9 +360,9 @@ class RootPainter(QtWidgets.QMainWindow):
     def store_current_slice_annot(self):
         """
         Update self.annot_data at self.cur_slice_idx
-        so the values for fg and bg correspond to self.annot_pixmap)
+        so the values for fg and bg correspond to self.scene.annot_pixmap)
         """
-        slice_rgb_np = qimage2ndarray.rgb_view(self.annot_pixmap.toImage())
+        slice_rgb_np = qimage2ndarray.rgb_view(self.scene.annot_pixmap.toImage())
         fg = slice_rgb_np[:, :, 0] > 0
         bg = slice_rgb_np[:, :, 1] > 0
         self.annot_data[0, self.cur_slice_idx] = bg
@@ -371,7 +371,7 @@ class RootPainter(QtWidgets.QMainWindow):
     def render_cur_annot_slice(self):
         self.cur_slice_idx = self.axial_nav.slice_idx
         annot_slice = self.annot_data[:, self.axial_nav.slice_idx, :, :]
-        self.annot_pixmap = im_utils.annot_slice_to_pixmap(annot_slice)
+        self.scene.annot_pixmap = im_utils.annot_slice_to_pixmap(annot_slice)
 
     def update_annot(self):
         """ Update the annotation the user views """
@@ -379,8 +379,12 @@ class RootPainter(QtWidgets.QMainWindow):
         if self.image_path.endswith('.npy'):
             fname = os.path.basename(self.image_path)
             
+            # As we have likley moved to a new slice. The history needs erasing. 
+            # to avoid undo taking us back to prevous states of another slice.
+            if len(self.scene.history) > 0:
+                self.scene.history = []
             # before updating the slice idx, store current annotation information
-            if hasattr(self, 'annot_pixmap'):
+            if hasattr(self.scene, 'annot_pixmap'):
                 self.store_current_slice_annot()
 
             self.render_cur_annot_slice()
@@ -388,19 +392,18 @@ class RootPainter(QtWidgets.QMainWindow):
             # if 2D, then load directory or use blank if missing.
             # if annot file is present then load
             if self.annot_path and os.path.isfile(self.annot_path):
-                self.annot_pixmap = QtGui.QPixmap(self.annot_path)
+                self.scene.annot_pixmap = QtGui.QPixmap(self.annot_path)
             else:
                 # otherwise use blank
-                self.annot_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-                self.annot_pixmap.fill(Qt.transparent)
+                self.scene.annot_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
+                self.scene.annot_pixmap.fill(Qt.transparent)
         # if annot_pixmap_holder is read then setPixmap
         if self.annot_pixmap_holder:
-            self.annot_pixmap_holder.setPixmap(self.annot_pixmap)
+            self.annot_pixmap_holder.setPixmap(self.scene.annot_pixmap)
         else:
             # or create the holder with the loaded pixmap
-            self.annot_pixmap_holder = self.scene.addPixmap(self.annot_pixmap)
+            self.annot_pixmap_holder = self.scene.addPixmap(self.scene.annot_pixmap)
         self.scene.annot_pixmap_holder = self.annot_pixmap_holder
-        self.scene.annot_pixmap = self.annot_pixmap
         self.scene.history.append(self.scene.annot_pixmap.copy())
         if not self.annot_visible:
             self.annot_pixmap_holder.setPixmap(self.blank_pixmap)
