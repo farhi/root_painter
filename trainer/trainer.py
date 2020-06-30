@@ -234,11 +234,11 @@ class Trainer():
         Path(os.path.join(self.msg_dir, message)).touch()
 
     def one_epoch(self, model, mode='train', val_tile_refs=None):
-        torch.cuda.empty_cache() # we need to make sure we have enough memory
+        #torch.cuda.empty_cache() # we need to make sure we have enough memory
         # mode is train or val
         annot_dir = self.train_config[f'{mode}_annot_dir']
         if not [is_image(a) for a in ls(annot_dir)]:
-            print('quit because no annotations')
+            print(f'skip {mode} epoch because no annotations')
             return None
 
         if self.first_loop:
