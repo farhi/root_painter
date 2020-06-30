@@ -227,13 +227,13 @@ class RootPainter(QtWidgets.QMainWindow):
             # channel for bg (0) and fg (1)
             self.annot_data = np.zeros([2] + list(self.img_data.shape))
 
-        self.render_cur_annot_slice()
 
         if os.path.isfile(self.seg_path):
             self.seg_data = im_utils.load_image(self.seg_path)
-        self.contrast_slider.update_range(self.img_data)
 
+        self.contrast_slider.update_range(self.img_data)
         self.axial_nav.update_range(self.img_data)
+        self.render_cur_annot_slice()
         # used for saving the edited annotation information
         # before changing slice
         self.cur_slice_idx = self.axial_nav.slice_idx
@@ -879,6 +879,14 @@ class RootPainter(QtWidgets.QMainWindow):
 
     def start_training(self):
         self.info_label.setText("Starting training...")
+        # 3D just uses the name of the first class
+        classes = self.classes
+        is_3d = self.image_path.endswith('.npy')
+        if is_3d:
+            classes = ['Foreground']
+            dimensions = 3
+        else:
+            dimensions = 2
         content = {
             "model_dir": self.model_dir,
             "dataset_dir": self.dataset_dir,
@@ -887,7 +895,8 @@ class RootPainter(QtWidgets.QMainWindow):
             "seg_dir": self.seg_dir,
             "log_dir": self.log_dir,
             "message_dir": self.message_dir,
-            "classes": self.classes
+            "classes": classes,
+            "dimensions": dimensions
         }
         self.send_instruction('start_training', content)
 
