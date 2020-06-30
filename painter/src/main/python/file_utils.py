@@ -73,7 +73,10 @@ def get_new_annot_target_dir(train_annot_dir, val_annot_dir):
 
     num_train_annots = len(train_annots)
     num_val_annots = len(val_annots)
-    # first aim to get at least one annotation in train and validation.
+    
+    if num_train_annots == 0 and num_val_annots == 0:
+        return train_annot_dir
+    # otherwise aim to get at least one annotation in train and validation.
     if num_train_annots == 0 and num_val_annots > 0:
         return train_annot_dir
     if num_train_annots > 0 and num_val_annots == 0:
