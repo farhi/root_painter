@@ -30,6 +30,7 @@ from unet import UNetGNRes
 from unet3d import UNet3D
 from metrics import get_metrics
 from file_utils import ls
+from scipy.special import softmax 
 
 
 def get_latest_model_paths(model_dir, k):
@@ -222,6 +223,8 @@ def ensemble_segment_3d(model_paths, image, batch_size, in_w, out_w, in_d,
     if pred_count > 1:
         pred_sum = pred_sum / pred_count
     if threshold is not None:
+        # TODO: use GPU to save time.
+        pred_sum = softmax(pred_sum, axis=0)
         pred_sum = (pred_sum > threshold).astype(np.byte)
     return pred_sum # don't need to divide if only one prediction
 
