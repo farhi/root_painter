@@ -175,19 +175,22 @@ class RPDataset(Dataset):
         # When tile_ref is specified we use these coordinates to get
         # the input tile. Otherwise we will sample randomly
 
-
         if tile_ref:
             annot_tile, im_tile, mask = self.get_tile_from_ref_3d(tile_ref)
             # For now just return the tile. We plan to add augmentation here.
             return im_tile, annot_tile, mask
 
         image, annot, _, _ = load_train_image_and_annot(self.dataset_dir, self.annot_dir)
-        # WARNING: padding is currently disabled. This will prevent training
-        # on annotation at the boundary of the image.
         pad_width = (self.in_w - self.out_w) // 2
         pad_depth = (self.in_d - self.out_d) // 2
+        
+        # pad to allow training close to the boundary of the image 
+        annot0 = im_utils.pad_3d(annot[0], pad_width, pad_depth)
+        annot1 = im_utils.pad_3d(annot[1], pad_width, pad_depth)
+        annot = np.stack((annot0, annot1))
+        image = im_utils.pad_3d(image, pad_width, pad_depth)
         annot_tile, im_tile = self.get_random_tile_3d(annot, image, pad_width, pad_depth)
-        # 3d augmentation isn't implemented yet but
+        # 3d augmentation isn't implemented properly yet but
         # the annotion should be cropped post augmentation to ensure
         # elastic grid doesn't remove the edges.
         annot_tile = annot_tile[:,
