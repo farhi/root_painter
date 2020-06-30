@@ -699,8 +699,9 @@ class RootPainter(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(500, check)
     
     def update_seg_slice_pixmap(self):
-        seg_slice = self.seg_data[self.axial_nav.slice_idx, :, :]
-        self.seg_pixmap = im_utils.seg_slice_to_pixmap(seg_slice)
+        if hasattr(self, 'seg_data'):
+            seg_slice = self.seg_data[self.axial_nav.slice_idx, :, :]
+            self.seg_pixmap = im_utils.seg_slice_to_pixmap(seg_slice)
 
     def close_project_window(self):
         self.close()
