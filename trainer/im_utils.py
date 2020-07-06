@@ -20,6 +20,7 @@ import os
 import time
 import glob
 import shutil
+from functools import partial
 from math import ceil
 import random
 import numpy as np
