@@ -40,13 +40,14 @@ class AxialNav(QtWidgets.QWidget):
         self.update_text()
 
     def update_text(self): 
-        self.axial_value_label.setText(f"{self.slice_idx+1}/{self.max_slice_idx+1}")
+        #self.axial_value_label.setText(f"{self.slice_idx+1}/{self.max_slice_idx+1}")
+        self.axial_value_label.setText(f"{self.slice_idx+1}")
 
     def initUI(self):
         self.layout = QtWidgets.QVBoxLayout()
-        self.label = QtWidgets.QLabel("Axial Slice")
-        self.label.setAlignment(QtCore.Qt.AlignCenter)
-        self.layout.addWidget(self.label)
+        #self.label = QtWidgets.QLabel("Axial Slice")
+        #self.label.setAlignment(QtCore.Qt.AlignCenter)
+        #self.layout.addWidget(self.label)
 
         self.debounce = QtCore.QTimer()
         self.debounce.setInterval(5)
@@ -63,18 +64,19 @@ class AxialNav(QtWidgets.QWidget):
         self.axial_slider.setValue(self.slice_idx)
         self.axial_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
         self.axial_slider.setTickInterval(1)
-        self.axial_slider.setFixedHeight(600)
+        #self.axial_slider.setFixedHeight(600)
         self.axial_slider.valueChanged.connect(self.value_changed)
         self.axial_slider_layout.addWidget(self.axial_slider)
         self.axial_value_label = QtWidgets.QLabel()
         self.update_text()
-        self.axial_value_label.setText(f"{self.slice_idx+1}/{self.max_slice_idx+1}")
+        #self.axial_value_label.setText(f"{self.slice_idx+1}/{self.max_slice_idx+1}")
+        self.axial_value_label.setText(f"{self.slice_idx+1}")
 
         self.axial_slider_layout.addWidget(self.axial_value_label)
         self.layout.addWidget(self.axial_slider_container)
         self.setLayout(self.layout)
+        self.setFixedWidth(65)
         self.setWindowTitle("Axial Position")
-
 
     def value_changed(self):
         self.slice_idx = self.axial_slider.value()
