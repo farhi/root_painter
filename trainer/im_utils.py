@@ -46,7 +46,7 @@ def normalize_tile(tile):
     return tile
 
 
-def load_train_image_and_annot(dataset_dir, train_annot_dir):
+def load_with_retry(load_fn, fpath):
     max_attempts = 60
     attempts = 0
     while attempts < max_attempts:
@@ -56,39 +56,47 @@ def load_train_image_and_annot(dataset_dir, train_annot_dir):
         # try-catch to avoid this.
         # (just try again)
         try:
-            # This might take ages, profile and optimize
-            fnames = ls(train_annot_dir)
-            fnames = [a for a in fnames if is_image(a)]
-            fname = random.sample(fnames, 1)[0]
-            annot_path = os.path.join(train_annot_dir, fname)
-            dims = 2
-            if fname.endswith('.npy'):
-                image, _ = load_image(os.path.join(dataset_dir, fname))
-                image = np.load(os.path.join(dataset_dir, fname), mmap_mode='c')
-                annot = np.load(annot_path, mmap_mode='c')
-                dims = 3
-            else:
-                image_path_part = os.path.join(dataset_dir,
-                                               os.path.splitext(fname)[0])
-                # it's possible the image has a different extenstion
-                # so use glob to get it
-                image_path = glob.glob(image_path_part + '.*')[0]
-                image = load_image(image_path)
-                annot = img_as_ubyte(imread(annot_path))
-                assert image.shape[2] == 3 # should be RGB
-            assert np.sum(annot) > 0
-            # also return fname for debugging purposes.
-            return image, annot, fname, dims
+            image = load_fn(fpath)
+            return image
         except Exception as exception:
-            print('load_train_image_and_annot', exception)
+            print('load_with_retry', fpath, exception)
             # This could be due to an empty annotation saved by the user.
             # Which happens rarely due to deleting all labels in an
             # existing annotation and is not a problem.
             # give it some time and try again.
             time.sleep(0.1)
     if attempts == max_attempts:
-        raise Exception('Could not load annotation and photo')
+        raise Exception('Could not load. Too many retries')
 
+
+def load_train_image_and_annot(dataset_dir, train_annot_dir):
+
+    def load_random(train_annot_dir, dataset_dir, _):
+        fnames = ls(train_annot_dir)
+        fnames = [a for a in fnames if is_image(a)]
+        fname = random.sample(fnames, 1)[0]
+        annot_path = os.path.join(train_annot_dir, fname)
+        dims = 2
+        if fname.endswith('.npy'):
+            image, _ = load_image(os.path.join(dataset_dir, fname))
+            image = np.load(os.path.join(dataset_dir, fname), mmap_mode='c')
+            annot = np.load(annot_path, mmap_mode='c')
+            dims = 3
+        else:
+            image_path_part = os.path.join(dataset_dir,
+                                           os.path.splitext(fname)[0])
+            # it's possible the image has a different extenstion
+            # so use glob to get it
+            image_path = glob.glob(image_path_part + '.*')[0]
+            image = load_image(image_path)
+            annot = img_as_ubyte(imread(annot_path))
+            assert image.shape[2] == 3 # should be RGB
+        assert np.sum(annot) > 0
+        # also return fname for debugging purposes.
+        return image, annot, fname, dims
+
+    load_random = partial(load_random, train_annot_dir, dataset_dir)
+    return load_with_retry(load_random, None)
 
 def get_class_map(annot, class_rgb):
     """ Return binary map defining locations of an image which
