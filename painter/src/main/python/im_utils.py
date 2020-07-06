@@ -139,3 +139,15 @@ def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
             # avoid low constrast warning.
             warnings.simplefilter("ignore")
             imsave(out_path, comp, quality=95)
+
+
+def store_annot_slice(annot_pixmap, annot_data, slice_idx):
+    """
+    Update .annot_data at slice_idx
+    so the values for fg and bg correspond to annot_pixmap)
+    """
+    slice_rgb_np = qimage2ndarray.rgb_view(annot_pixmap.toImage())
+    fg = slice_rgb_np[:, :, 0] > 0
+    bg = slice_rgb_np[:, :, 1] > 0
+    annot_data[0, slice_idx] = bg
+    annot_data[1, slice_idx] = fg
