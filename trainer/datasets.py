@@ -279,11 +279,10 @@ class RPDataset(Dataset):
             return self.get_tile_from_ref_2d(tile_ref)
         return self.get_tile_from_ref_3d(tile_ref)
 
-
     def get_tile_from_ref_3d(self, tile_ref):
         fname, (tile_x, tile_y, tile_z), _, _ = tile_ref
         image_path = os.path.join(self.dataset_dir, fname)
-        image, _ = im_utils.load_image(image_path)
+        image, _ = im_utils.load_with_retry(im_utils.load_image, image_path)
         pad_width = (self.in_w - self.out_w) // 2
         pad_depth = (self.in_d - self.out_d) // 2
         # padding just incase we are at the edge
@@ -294,7 +293,7 @@ class RPDataset(Dataset):
         im_tile = img_as_float32(im_tile)
         im_tile = im_utils.normalize_tile(im_tile)
         annot_path = os.path.join(self.annot_dir, fname)
-        annot = np.load(annot_path, mmap_mode='c')
+        annot, _ = im_utils.load_with_retry(im_utils.load_image, annot_path)
         annot_tile = annot[:,
                            tile_z:tile_z+self.out_d,
                            tile_y:tile_y+self.out_w,
