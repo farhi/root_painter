@@ -50,15 +50,13 @@ from extract_count import ExtractCountWidget
 from extract_regions import ExtractRegionsWidget
 from extract_length import ExtractLengthWidget
 from extract_comp import ExtractCompWidget
-from graphics_scene import GraphicsScene
-from graphics_view import CustomGraphicsView
+from im_viewer import ImViewer
 from nav import NavWidget
 from visibility_widget import VisibilityWidget
 from file_utils import last_fname_with_annotations
 from file_utils import get_annot_path
 from file_utils import maybe_save_annotation_2d, maybe_save_annotation_3d
 from instructions import send_instruction
-from axial_nav import AxialNav
 from contrast_slider import ContrastSlider
 import im_utils
 
@@ -77,46 +75,12 @@ class RootPainter(QtWidgets.QMainWindow):
                                         sync_dir=sync_dir)
         self.contrast_presets = contrast_presets
         self.tracking = False
-        self.image_pixmap_holder = None
-        self.seg_pixmap_holder = None
-        self.annot_pixmap_holder = None
-
-        self.image_visible = True
-        self.seg_visible = False
-        self.annot_visible = True
+        self.seg_mtime = False
         self.pre_segment_count = 0
         self.im_width = None
         self.im_height = None
 
         self.initUI()
-
-    def mouse_scroll(self, event):
-        scroll_up = event.angleDelta().y() > 0
-        modifiers = QtWidgets.QApplication.keyboardModifiers()
-        alt_down = (modifiers & QtCore.Qt.AltModifier)
-        shift_down = (modifiers & QtCore.Qt.ShiftModifier)
-        ctrl_down = (modifiers & QtCore.Qt.ControlModifier)
-
-        if alt_down or shift_down:
-            # change by 10% (nearest int) or 1 (min)
-            increment = max(1, int(round(self.scene.brush_size / 10)))
-            if scroll_up:
-                self.scene.brush_size += increment
-            else:
-                self.scene.brush_size -= increment
-            self.scene.brush_size = max(1, self.scene.brush_size)
-            self.update_cursor()
-        elif ctrl_down:
-            if scroll_up:
-                self.axial_nav.axial_slider.setValue(self.axial_nav.slice_idx + 1)
-            else:
-                self.axial_nav.axial_slider.setValue(self.axial_nav.slice_idx - 1)
-        else:
-            if scroll_up:
-                self.graphics_view.zoom *= 1.1
-            else:
-                self.graphics_view.zoom /= 1.1
-            self.graphics_view.update_zoom()
 
     def initUI(self):
         if len(sys.argv) < 2:
@@ -181,233 +145,20 @@ class RootPainter(QtWidgets.QMainWindow):
     def update_file(self, fpath):
         """ Invoked when the file to view has been changed by the user.
             Show image file and it's associated annotation and segmentation """
-
-        # if anything has happened then save it before loading the next file
-        if len(self.scene.history) > 0:
-            if self.image_path.endswith('.npy'):
-                self.store_current_slice_annot()
-            # save annotation for current file before changing to new file.
-            self.save_annotation()
-        else:
-            print('no history so not saving annotation')
-
-        self.image_path = os.path.join(self.dataset_dir, os.path.basename(fpath))
-        self.update_image()
-        self.segment_current_image()
-        self.update_window_title()
-        # clear history when moving to a new file
-        self.scene.history = []
-        self.scene.redo_list = []
-
-
-    def update_image(self):
-        """ update image file data """
-        assert os.path.isfile(self.image_path), f"Cannot find file {self.image_path}"
-        self.img_data = im_utils.load_image(self.image_path)
-        fname = os.path.basename(self.image_path) 
-        # if the image file name is numpy then we use
-        # nifty for the segmentation   
-        if fname.endswith('.npy'):
-            seg_fname = os.path.splitext(fname)[0] + '.nii.gz' 
-        else:
-            seg_fname = os.path.splitext(fname)[0] + '.png' 
-
+        # save annotation for current file before changing to new file.
+        self.save_annotation()
+        fname = os.path.basename(fpath)
+        self.image_path = os.path.join(self.dataset_dir, fname)
+        seg_fname = os.path.splitext(fname)[0] + '.nii.gz' 
         self.seg_path = os.path.join(self.seg_dir, seg_fname)
-        # if an annotation exists then load it.
         self.annot_path = get_annot_path(fname,
                                          self.train_annot_dir,
                                          self.val_annot_dir)
-        if self.annot_path and os.path.isfile(self.annot_path):
-            self.annot_data = np.load(self.annot_path)
-        else:
-            # otherwise create empty annotation array
-            # if we are working with 3D data (npy file) and the
-            # file hasn't been found then create an empty array to be
-            # used for storing the annotation information.
-            # channel for bg (0) and fg (1)
-            self.annot_data = np.zeros([2] + list(self.img_data.shape))
+        self.viewer.update_image(self.image_path, self.annot_path, self.seg_path)
+        self.segment_current_image()
+        self.update_window_title()
 
-
-        if os.path.isfile(self.seg_path):
-            self.seg_data = im_utils.load_image(self.seg_path)
-
-        self.contrast_slider.update_range(self.img_data)
-        self.axial_nav.update_range(self.img_data)
-        self.render_cur_annot_slice()
-        # used for saving the edited annotation information
-        # before changing slice
-        self.cur_slice_idx = self.axial_nav.slice_idx
-        self.update_image_with_contrast()
-
-
-
-    def update_image_with_contrast(self):
-        """ show the already loaded image we are looking at, at the specific
-            slice the user has specified and using the specific
-            user specified contrast settings.
-        """
-        is_3d = True
-        if is_3d:
-            img = np.array(self.img_data[self.axial_nav.slice_idx, :, :])
-            img = im_utils.norm_slice(img,
-                                      self.contrast_slider.min_value,
-                                      self.contrast_slider.max_value,
-                                      self.contrast_slider.brightness_value)
-            q_image = qimage2ndarray.array2qimage(img)
-            image_pixmap = QtGui.QPixmap.fromImage(q_image)
-            im_size = image_pixmap.size()
-            im_width, im_height = im_size.width(), im_size.height()
-            assert im_width > 0
-            assert im_height > 0
-            self.graphics_view.image = image_pixmap # for resize later
-            self.im_width = im_width
-            self.im_height = im_height
-            self.scene.setSceneRect(-15, -15, im_width+30, im_height+30)
-
-            # Used to replace the segmentation or annotation when they are not visible.
-            self.blank_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-            self.blank_pixmap.fill(Qt.transparent)
-
-            self.black_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-            self.black_pixmap.fill(Qt.black)
-
-            if self.image_pixmap_holder:
-                self.image_pixmap_holder.setPixmap(image_pixmap)
-            else:
-                self.image_pixmap_holder = self.scene.addPixmap(image_pixmap)
-            if not self.image_visible:
-                self.image_pixmap_holder.setPixmap(self.black_pixmap)
-
-        else:
-            image_pixmap = QtGui.QPixmap(self.image_path)
-            im_size = image_pixmap.size()
-            im_width, im_height = im_size.width(), im_size.height()
-
-            assert im_width > 0, self.image_path
-            assert im_height > 0, self.image_path
-
-            self.graphics_view.image = image_pixmap # for resize later
-
-            self.im_width = im_width
-            self.im_height = im_height
-
-            self.scene.setSceneRect(-15, -15, im_width+30, im_height+30)
-
-            # Used to replace the segmentation or annotation when they are not visible.
-            self.blank_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-            self.blank_pixmap.fill(Qt.transparent)
-
-            self.black_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-            self.black_pixmap.fill(Qt.black)
-
-            if self.image_pixmap_holder:
-                self.image_pixmap_holder.setPixmap(image_pixmap)
-            else:
-                self.image_pixmap_holder = self.scene.addPixmap(image_pixmap)
-            if not self.image_visible:
-                self.image_pixmap_holder.setPixmap(self.black_pixmap)
-
-        self.update_seg() #  We show a specific slice at a time
-        self.update_annot() #  We show a specific slice at a time
-
-
-    def update_seg(self):
-        # if seg file is present then load.
-        if os.path.isfile(self.seg_path):
-            self.seg_mtime = os.path.getmtime(self.seg_path)
-            if self.seg_path.endswith('.png'): 
-                self.seg_pixmap = QtGui.QPixmap(self.seg_path)
-            else:
-                self.update_seg_slice_pixmap() # 3d specific
-            self.nav.next_image_button.setText('Save && Next >')
-            if hasattr(self, 'vis_widget'):
-                self.vis_widget.seg_checkbox.setText('Segmentation (S)')
-            self.nav.next_image_button.setEnabled(True)
-        else:
-            self.seg_mtime = None
-            # otherwise use blank
-            self.seg_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-            self.seg_pixmap.fill(Qt.transparent)
-            painter = QtGui.QPainter()
-            painter.begin(self.seg_pixmap)
-            font = QtGui.QFont()
-            font.setPointSize(48)
-            painter.setFont(font)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255)))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255), Qt.SolidPattern))
-            if sys.platform == 'win32':
-                # For some reason the text has a different size
-                # and position on windows
-                # so change the background rectangle also.
-                painter.drawRect(0, 0, 657, 75)
-            else:
-                painter.drawRect(10, 10, 465, 55)
-            painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 150)))
-            painter.drawText(16, 51, 'Loading segmentation')
-            painter.end()
-            self.nav.next_image_button.setText('Loading Segmentation...')
-            if hasattr(self, 'vis_widget'):
-                self.vis_widget.seg_checkbox.setText('Segmentation (Loading)')
-            self.nav.next_image_button.setEnabled(False)
-
-        if self.seg_pixmap_holder:
-            self.seg_pixmap_holder.setPixmap(self.seg_pixmap)
-        else:
-            self.seg_pixmap_holder = self.scene.addPixmap(self.seg_pixmap)
-        if not self.seg_visible:
-            self.seg_pixmap_holder.setPixmap(self.blank_pixmap)
-
-    def store_current_slice_annot(self):
-        """
-        Update self.annot_data at self.cur_slice_idx
-        so the values for fg and bg correspond to self.scene.annot_pixmap)
-        """
-        slice_rgb_np = qimage2ndarray.rgb_view(self.scene.annot_pixmap.toImage())
-        fg = slice_rgb_np[:, :, 0] > 0
-        bg = slice_rgb_np[:, :, 1] > 0
-        self.annot_data[0, self.cur_slice_idx] = bg
-        self.annot_data[1, self.cur_slice_idx] = fg
-
-    def render_cur_annot_slice(self):
-        self.cur_slice_idx = self.axial_nav.slice_idx
-        annot_slice = self.annot_data[:, self.axial_nav.slice_idx, :, :]
-        self.scene.annot_pixmap = im_utils.annot_slice_to_pixmap(annot_slice)
-
-    def update_annot(self):
-        """ Update the annotation the user views """
-        # if it's 3d then get the slice from the loaded numpy array
-        if self.image_path.endswith('.npy'):
-            fname = os.path.basename(self.image_path)
-            
-            # As we have likley moved to a new slice. The history needs erasing. 
-            # to avoid undo taking us back to prevous states of another slice.
-            if len(self.scene.history) > 0:
-                self.scene.history = []
-            # before updating the slice idx, store current annotation information
-            if hasattr(self.scene, 'annot_pixmap'):
-                self.store_current_slice_annot()
-
-            self.render_cur_annot_slice()
-        else:
-            # if 2D, then load directory or use blank if missing.
-            # if annot file is present then load
-            if self.annot_path and os.path.isfile(self.annot_path):
-                self.scene.annot_pixmap = QtGui.QPixmap(self.annot_path)
-            else:
-                # otherwise use blank
-                self.scene.annot_pixmap = QtGui.QPixmap(self.im_width, self.im_height)
-                self.scene.annot_pixmap.fill(Qt.transparent)
-        # if annot_pixmap_holder is read then setPixmap
-        if self.annot_pixmap_holder:
-            self.annot_pixmap_holder.setPixmap(self.scene.annot_pixmap)
-        else:
-            # or create the holder with the loaded pixmap
-            self.annot_pixmap_holder = self.scene.addPixmap(self.scene.annot_pixmap)
-        self.scene.annot_pixmap_holder = self.annot_pixmap_holder
-        self.scene.history.append(self.scene.annot_pixmap.copy())
-        if not self.annot_visible:
-            self.annot_pixmap_holder.setPixmap(self.blank_pixmap)
-
+        
     def segment_image(self, image_fnames):
         # send instruction to segment the new image.
         seg_classes = copy.deepcopy(self.classes)
@@ -559,35 +310,21 @@ class RootPainter(QtWidgets.QMainWindow):
                             f" {os.path.basename(self.image_path)}")
 
     def init_active_project_ui(self):
-        # container for both nav and graphics view.
+        # container for both nav and im_viewer.
         container = QtWidgets.QWidget()
         container_layout = QtWidgets.QVBoxLayout()
         container_layout.setContentsMargins(0, 0, 0, 0)
         container.setLayout(container_layout)
         self.setCentralWidget(container)
 
-        self.graphics_view = CustomGraphicsView()
-        self.graphics_view.zoom_change.connect(self.update_cursor)
+        self.viewer = ImViewer(self)
+        container_layout.addWidget(self.viewer)
 
         # contrast slider
         self.contrast_slider = ContrastSlider(self.contrast_presets)
         self.contrast_slider.show()
-        self.contrast_slider.changed.connect(self.update_image_with_contrast)
-
-        # axial slider
-        self.axial_nav = AxialNav()
-        self.axial_nav.show()
-        self.axial_nav.changed.connect(self.update_image_with_contrast)
-
-        container_layout.addWidget(self.graphics_view)
-        scene = GraphicsScene()
-        scene.parent = self
-        self.graphics_view.setScene(scene)
-        self.graphics_view.mouse_scroll_event.connect(self.mouse_scroll)
-
-        # Required so graphics scene can track mouse up when mouse is not pressed
-        self.graphics_view.setMouseTracking(True)
-        self.scene = scene
+        self.contrast_slider.changed.connect(self.viewer.update_image_slice)
+        
         self.nav = NavWidget(self.image_fnames)
         self.update_file(self.image_path)
 
@@ -640,13 +377,12 @@ class RootPainter(QtWidgets.QMainWindow):
         self.add_menu()
 
         self.resize(container_layout.sizeHint())
-
-        self.update_cursor()
-
+        
+        self.viewer.update_cursor()
         def view_fix():
             """ hack for linux bug """
-            self.update_cursor()
-            self.graphics_view.fit_to_view()
+            self.viewer.update_cursor()
+            self.viewer.graphics_view.fit_to_view()
         QtCore.QTimer.singleShot(100, view_fix)
 
     def track_changes(self):
@@ -674,18 +410,13 @@ class RootPainter(QtWidgets.QMainWindow):
                     new_mtime = os.path.getmtime(self.seg_path)
                     # seg_mtime is None before the seg is loaded.
                     if not self.seg_mtime:
-                        if self.seg_path.endswith('.png'):
-                            self.seg_pixmap = QtGui.QPixmap(self.seg_path)
-                        else:
-                            # assume numpy
-                            self.seg_data = im_utils.load_image(self.seg_path)
-                            self.update_seg_slice_pixmap()
-
+                        self.viewer.seg_data = im_utils.load_image(self.seg_path)
+                        self.viewer.update_seg_slice_pixmap()
                         self.seg_mtime = new_mtime
                         self.nav.next_image_button.setText('Save && Next >')
                         self.nav.next_image_button.setEnabled(True)
-                        if self.seg_visible:
-                            self.seg_pixmap_holder.setPixmap(self.seg_pixmap)
+                        if self.viewer.seg_visible:
+                            self.viewer.seg_pixmap_holder.setPixmap(self.seg_pixmap)
                         if hasattr(self, 'vis_widget'):
                             self.vis_widget.seg_checkbox.setText('Segmentation (S)')
                 except Exception as e:
@@ -698,11 +429,6 @@ class RootPainter(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(500, check)
         QtCore.QTimer.singleShot(500, check)
     
-    def update_seg_slice_pixmap(self):
-        if hasattr(self, 'seg_data'):
-            seg_slice = self.seg_data[self.axial_nav.slice_idx, :, :]
-            self.seg_pixmap = im_utils.seg_slice_to_pixmap(seg_slice)
-
     def close_project_window(self):
         self.close()
         self.closed.emit()
@@ -718,17 +444,18 @@ class RootPainter(QtWidgets.QMainWindow):
         self.close_project_action.triggered.connect(self.close_project_window)
 
         edit_menu = menu_bar.addMenu("Edit")
+
         # Undo
         undo_action = QtWidgets.QAction(QtGui.QIcon(""), "Undo", self)
         undo_action.setShortcut("Z")
         edit_menu.addAction(undo_action)
-        undo_action.triggered.connect(self.scene.undo)
+        undo_action.triggered.connect(self.viewer.scene.undo)
 
         # Redo
         redo_action = QtWidgets.QAction(QtGui.QIcon(""), "Redo", self)
         redo_action.setShortcut("Ctrl+Shift+Z")
         edit_menu.addAction(redo_action)
-        redo_action.triggered.connect(self.scene.redo)
+        redo_action.triggered.connect(self.viewer.scene.redo)
 
         options_menu = menu_bar.addMenu("Options")
         # pre segment count
@@ -744,14 +471,14 @@ class RootPainter(QtWidgets.QMainWindow):
         fit_to_view_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Fit to View', self)
         fit_to_view_btn.setShortcut('Ctrl+F')
         fit_to_view_btn.setStatusTip('Fit image to view')
-        fit_to_view_btn.triggered.connect(self.graphics_view.fit_to_view)
+        fit_to_view_btn.triggered.connect(self.viewer.graphics_view.fit_to_view)
         view_menu.addAction(fit_to_view_btn)
 
         # Actual size
         actual_size_view_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Actual size', self)
         actual_size_view_btn.setShortcut('Ctrl+A')
         actual_size_view_btn.setStatusTip('Show image at actual size')
-        actual_size_view_btn.triggered.connect(self.graphics_view.show_actual_size)
+        actual_size_view_btn.triggered.connect(self.viewer.graphics_view.show_actual_size)
         view_menu.addAction(actual_size_view_btn)
 
         toggle_seg_visibility_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
@@ -832,8 +559,8 @@ class RootPainter(QtWidgets.QMainWindow):
         self.brush_menu.addAction(color_action)
         color_action.triggered.connect(partial(self.set_color,
                                                color=QtGui.QColor(*color_val)))
-        if self.scene.brush_color is None:
-            self.scene.brush_color = QtGui.QColor(*color_val)
+        if self.viewer.scene.brush_color is None:
+            self.viewer.scene.brush_color = QtGui.QColor(*color_val)
 
     def add_brushes(self):
 
@@ -906,88 +633,34 @@ class RootPainter(QtWidgets.QMainWindow):
 
     def seg_checkbox_change(self, state):
         checked = (state == QtCore.Qt.Checked)
-        if checked is not self.seg_visible:
-            self.show_hide_seg()
+        if checked is not self.viewer.seg_visible:
+            self.viewer.show_hide_seg()
 
     def annot_checkbox_change(self, state):
         checked = (state == QtCore.Qt.Checked)
-        if checked is not self.annot_visible:
-            self.show_hide_annot()
+        if checked is not self.viewer.annot_visible:
+            self.viewer.show_hide_annot()
 
     def im_checkbox_change(self, state):
         checked = (state == QtCore.Qt.Checked)
-        if checked is not self.image_visible:
-            self.show_hide_image()
+        if checked is not self.viewer.image_visible:
+            self.viewer.show_hide_image()
 
     def show_hide_seg(self):
-        # show or hide the current segmentation.
-        if self.seg_visible:
-            self.seg_pixmap_holder.setPixmap(self.blank_pixmap)
-            self.seg_visible = False
-        else:
-            self.seg_pixmap_holder.setPixmap(self.seg_pixmap)
-            self.seg_visible = True
-        self.vis_widget.seg_checkbox.setChecked(self.seg_visible)
+        self.viewer.show_hide_seg()
+        self.vis_widget.seg_checkbox.setChecked(self.viewer.seg_visible)
 
     def show_hide_image(self):
-        # show or hide the current image.
-        # Could be useful to help inspect the segmentation or annotation
-        if self.image_visible:
-            self.image_pixmap_holder.setPixmap(self.black_pixmap)
-            self.image_visible = False
-        else:
-            self.image_pixmap_holder.setPixmap(self.graphics_view.image)
-            self.image_visible = True
-        self.vis_widget.im_checkbox.setChecked(self.image_visible)
+        self.viewer.show_hide_image()
+        self.vis_widget.im_checkbox.setChecked(self.viewer.image_visible)
 
     def show_hide_annot(self):
-        # show or hide the current annotations.
-        # Could be useful to help inspect the background image
-        if self.annot_visible:
-            self.annot_pixmap_holder.setPixmap(self.blank_pixmap)
-            self.annot_visible = False
-        else:
-            self.scene.annot_pixmap_holder.setPixmap(self.scene.annot_pixmap)
-            self.annot_visible = True
-        self.vis_widget.annot_checkbox.setChecked(self.annot_visible)
+        self.viewer.show_hide_annot()
+        self.vis_widget.annot_checkbox.setChecked(self.viewer.annot_visible)
 
     def set_color(self, _event, color=None):
-        self.scene.brush_color = color
-        self.update_cursor()
-
-    def update_cursor(self):
-        brush_w = self.scene.brush_size * self.graphics_view.zoom * 0.93
-        brush_w = max(brush_w, 3)
-
-        canvas_w = max(brush_w, 30)
-        pm = QtGui.QPixmap(canvas_w, canvas_w)
-        pm.fill(Qt.transparent)
-        painter = QtGui.QPainter(pm)
-
-        painter.drawPixmap(canvas_w, canvas_w, pm)
-
-        brush_rgb = self.scene.brush_color.toRgb()
-        r, g, b = brush_rgb.red(), brush_rgb.green(), brush_rgb.blue()
-        cursor_color = QtGui.QColor(r, g, b, 120)
-
-        painter.setPen(QtGui.QPen(cursor_color, 3, Qt.SolidLine,
-                                  Qt.RoundCap, Qt.RoundJoin))
-        ellipse_x = int(round(canvas_w/2 - (brush_w)/2))
-        ellipse_y = int(round(canvas_w/2 - (brush_w)/2))
-        ellipse_w = brush_w
-        ellipse_h = brush_w
-
-        painter.drawEllipse(ellipse_x, ellipse_y, ellipse_w, ellipse_h)
-        painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 180), 2,
-                                  Qt.SolidLine, Qt.FlatCap))
-
-        # Draw black to show where cursor is even when brush is small
-        painter.drawLine(0, (canvas_w/2), canvas_w*2, (canvas_w/2))
-        painter.drawLine((canvas_w/2), 0, (canvas_w/2), canvas_w*2)
-        painter.end()
-
-        cursor = QtGui.QCursor(pm)
-        self.setCursor(cursor)
+        self.viewer.scene.brush_color = color
+        self.viewer.update_cursor()
 
     def open_pre_segment_count_dialog(self):
         new_count, ok = QtWidgets.QInputDialog.getInt(self, "",
@@ -1001,21 +674,19 @@ class RootPainter(QtWidgets.QMainWindow):
         # Check if control key is up to disble it.
         modifiers = QtWidgets.QApplication.keyboardModifiers()
         if not modifiers & QtCore.Qt.ControlModifier:
-            self.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
+            self.viewer.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
 
     def save_annotation(self):
-        if self.image_path.endswith('.npy'): 
+        if self.viewer.scene.annot_pixmap:
+            im_utils.store_annot_slice(self.viewer.scene.annot_pixmap,
+                                       self.viewer.annot_data, self.viewer.cur_slice_idx)
+        # check if it has data yet as when loading the first time
+        # it doesn't have anything to save
+        if self.viewer.annot_data is not None:
             fname = os.path.basename(self.image_path)
             fname = os.path.splitext(fname)[0] + '.npy'
-            self.annot_path = maybe_save_annotation_3d(self.annot_data,
+            self.annot_path = maybe_save_annotation_3d(self.viewer.annot_data,
                                                        self.annot_path,
                                                        fname,
-                                                       self.train_annot_dir,
-                                                       self.val_annot_dir)
-        elif self.scene.annot_pixmap:
-            self.annot_path = maybe_save_annotation_2d(self.proj_location,
-                                                       self.scene.annot_pixmap,
-                                                       self.annot_path,
-                                                       self.fname,
                                                        self.train_annot_dir,
                                                        self.val_annot_dir)
