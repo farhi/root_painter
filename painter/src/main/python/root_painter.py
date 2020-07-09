@@ -350,6 +350,12 @@ class RootPainter(QtWidgets.QMainWindow):
         self.setWindowTitle(f"RootPainter {proj_dirname}"
                             f" {os.path.basename(self.image_path)}")
 
+    def closeEvent(self, event):
+        if hasattr(self, 'contrast_slider'):
+            self.contrast_slider.close()
+        if hasattr(self, 'sag_viewer'):
+            self.sag_viewer.close()
+
     def init_active_project_ui(self):
         # container for both nav and im_viewer.
         container = QtWidgets.QWidget()
