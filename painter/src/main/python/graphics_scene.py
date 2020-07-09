@@ -45,6 +45,8 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             new_state = self.history[-1].copy()
             self.annot_pixmap_holder.setPixmap(new_state)
             self.annot_pixmap = new_state
+            self.parent.store_annot_slice()
+            self.parent.parent.update_viewer_annot_slice()
 
 
     def redo(self):
@@ -53,6 +55,9 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             self.history.append(new_state.copy())
             self.annot_pixmap_holder.setPixmap(new_state)
             self.annot_pixmap = new_state
+            self.parent.store_annot_slice()
+            # Update all views with new state.
+            self.parent.parent.update_viewer_annot_slice()
 
 
     def mousePressEvent(self, event):
@@ -91,6 +96,9 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
                 self.history = self.history[-50:]
             self.history.append(self.annot_pixmap.copy())
             self.redo_list = []
+            self.parent.store_annot_slice()
+            # update all views with new state.
+            self.parent.parent.update_viewer_annot_slice()
 
     def mouseMoveEvent(self, event):
         if self.drawing:

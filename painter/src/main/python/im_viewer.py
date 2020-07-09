@@ -193,7 +193,6 @@ class ImViewer(QtWidgets.QWidget):
                 self.graphics_view.zoom /= 1.1
             self.graphics_view.update_zoom()
 
-
     def show_hide_image(self):
         """ show or hide the current image.
             Could be useful to help inspect the
@@ -368,9 +367,11 @@ class ImViewer(QtWidgets.QWidget):
         self.scene.annot_pixmap_holder = self.annot_pixmap_holder
 
         # so we can go back to the first stage of history
-        self.scene.history.append(self.scene.annot_pixmap.copy())
+        if not self.scene.history:
+            self.scene.history.append(self.scene.annot_pixmap.copy())
         if not self.annot_visible:
             self.annot_pixmap_holder.setPixmap(self.blank_pixmap)
+
 
 
 class ImViewerWindow(QtWidgets.QMainWindow, ImViewer):

@@ -358,12 +358,20 @@ class RootPainter(QtWidgets.QMainWindow):
         if hasattr(self, 'coronal_viewer'):
             self.coronal_viewer.close()
 
-    def update_viewer_slice(self):
+    def update_viewer_image_slice(self):
         self.axial_viewer.update_image_slice()
-        if self.sagittal_viewer.isVisble(): 
+        if self.sagittal_viewer.isVisible(): 
             self.sagittal_viewer.update_image_slice()
-        if self.coronal_viewer.isVisble(): 
+        if self.coronal_viewer.isVisible(): 
             self.coronal_viewer.update_image_slice()
+
+    def update_viewer_annot_slice(self):
+        self.axial_viewer.update_annot_slice()
+        if self.sagittal_viewer.isVisible(): 
+            self.sagittal_viewer.update_annot_slice()
+        if self.coronal_viewer.isVisible(): 
+            self.coronal_viewer.update_annot_slice()
+
 
     def init_active_project_ui(self):
         # container for both nav and im_viewer.
@@ -385,7 +393,7 @@ class RootPainter(QtWidgets.QMainWindow):
 
         container_layout.addWidget(self.viewers_container)
         self.contrast_slider = ContrastSlider(self.contrast_presets)
-        self.contrast_slider.changed.connect(self.update_viewer_slice)
+        self.contrast_slider.changed.connect(self.update_viewer_image_slice)
 
         self.nav = NavWidget(self.image_fnames)
         self.update_file(self.image_path)
