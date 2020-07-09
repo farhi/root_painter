@@ -365,32 +365,15 @@ class RootPainter(QtWidgets.QMainWindow):
 
         self.axial_viewer = ImViewer(self, 'axial')
         self.sag_viewer = ImViewerWindow(self, 'sagittal')
-        self.sag_viewer.setObjectName('sag_viewer') # to allow reference when it is added / removed.
         self.viewers_layout.addWidget(self.axial_viewer)
-        #self.viewers_layout.addWidget(self.sag_viewer)
 
         container_layout.addWidget(self.viewers_container)
-
-        # contrast slider
         self.contrast_slider = ContrastSlider(self.contrast_presets)
-        self.contrast_slider.show()
         self.contrast_slider.changed.connect(self.axial_viewer.update_image_slice)
+        self.contrast_slider.changed.connect(self.sag_viewer.update_image_slice)
 
         self.nav = NavWidget(self.image_fnames)
         self.update_file(self.image_path)
-
-        # bottom bar
-        #bottom_bar = QtWidgets.QWidget()
-        #bottom_bar_layout = QtWidgets.QHBoxLayout()
-        ## left, top, right, bottom
-        #bottom_bar_layout.setContentsMargins(20, 0, 20, 20)
-        #bottom_bar_layout.setSpacing(0)
-        #bottom_bar.setLayout(bottom_bar_layout)
-
-        #container_layout.addWidget(bottom_bar)
-
-        # Bottom bar left
-        #bottom_bar_layout.addWidget(self.vis_widget)
 
         # bottom bar right
         bottom_bar_r = QtWidgets.QWidget()
@@ -548,6 +531,7 @@ class RootPainter(QtWidgets.QMainWindow):
         # network_menu.addAction(segment_image_btn)
         self.add_measurements_menu(menu_bar)
         self.add_extras_menu(menu_bar)
+        menus.add_windows_menu(self)
 
     def add_contrast_setting_options(self, view_menu):
         preset_count = 0

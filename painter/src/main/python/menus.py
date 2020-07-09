@@ -20,6 +20,15 @@ def add_edit_menu(window, im_viewer, menu_bar):
     redo_action.triggered.connect(im_viewer.scene.redo)
     return edit_menu
 
+
+def add_windows_menu(main_window):
+    # contrast slider
+    menu = main_window.menu_bar.addMenu("Windows")
+    contrast_settings_action = QtWidgets.QAction(QtGui.QIcon(""), "Contrast settings", main_window)
+    menu.addAction(contrast_settings_action)
+    contrast_settings_action.triggered.connect(main_window.contrast_slider.show)
+
+
 def add_brush_menu(classes, im_viewer, menu_bar):
     brush_menu = menu_bar.addMenu("Brushes")
 
