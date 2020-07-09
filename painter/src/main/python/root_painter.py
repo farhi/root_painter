@@ -487,17 +487,6 @@ class RootPainter(QtWidgets.QMainWindow):
         # add view menu for axial slice navigation.
         view_menu = menus.add_view_menu(self, self.axial_viewer, self.menu_bar)
 
-        def show_hide_sag_view():
-            if self.viewers_container.findChild(QtWidgets.QWidget, 'sag_viewer'):
-                self.sag_viewer.hide()
-            else:
-                self.sag_viewer.show()
-        toggle_sag_view_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                                'Toggle Sagittal View', self)
-        toggle_sag_view_btn.setStatusTip('Show or hide sagittal view')
-        toggle_sag_view_btn.triggered.connect(show_hide_sag_view)
-        view_menu.addAction(toggle_sag_view_btn)
-
         self.add_contrast_setting_options(view_menu)
 
         # Network Menu

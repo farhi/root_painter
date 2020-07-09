@@ -381,3 +381,5 @@ class ImViewerWindow(QtWidgets.QMainWindow, ImViewer):
         self.container = QtWidgets.QWidget()
         self.setCentralWidget(self.container)
         self.container.setLayout(self.outer_layout)
+
+        self.setWindowTitle("RootPainter - " + self.mode + ' view')

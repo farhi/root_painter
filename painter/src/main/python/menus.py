@@ -25,8 +25,14 @@ def add_windows_menu(main_window):
     # contrast slider
     menu = main_window.menu_bar.addMenu("Windows")
     contrast_settings_action = QtWidgets.QAction(QtGui.QIcon(""), "Contrast settings", main_window)
-    menu.addAction(contrast_settings_action)
+    contrast_settings_action.setStatusTip('Show contrast settings')
     contrast_settings_action.triggered.connect(main_window.contrast_slider.show)
+    menu.addAction(contrast_settings_action)
+
+    show_sag_view_action = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Sagittal View', main_window)
+    show_sag_view_action.setStatusTip('Show sagittal view')
+    show_sag_view_action.triggered.connect(main_window.sag_viewer.show)
+    menu.addAction(show_sag_view_action)
 
 
 def add_brush_menu(classes, im_viewer, menu_bar):
