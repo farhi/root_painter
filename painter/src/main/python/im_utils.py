@@ -148,12 +148,29 @@ def get_slice(volume, slice_idx, mode):
             slice_data = volume[:, slice_idx, :, :]
         else:
             slice_data = volume[slice_idx, :, :]
+    elif mode == 'coronal':
+        
+        if len(volume.shape) > 3:
+            # if more than 3 presume first is channel dimension
+            slice_data = volume[:, :, slice_idx, :]
+            new_slice_data = np.zeros(slice_data.shape)
+            new_slice_data[0] = slice_data[1]
+            new_slice_data[1] = slice_data[0]
+            slice_data = new_slice_data
+        else:
+            slice_data = volume[:, slice_idx, :]
+        slice_data = np.flipud(slice_data)
     elif mode == 'sagittal':
         if len(volume.shape) > 3:
             # if more than 3 presume first is channel dimension
-            slice_data = volume[:, :, :, slice_idx][::-1]
+            slice_data = volume[:, :, :, slice_idx]
+            new_slice_data = np.zeros(slice_data.shape)
+            new_slice_data[0] = slice_data[1]
+            new_slice_data[1] = slice_data[0]
+            slice_data = new_slice_data
         else:
-            slice_data = volume[:, :, slice_idx][::-1]
+            slice_data = volume[:, :, slice_idx]
+        slice_data = np.flipud(slice_data)
     else:
         raise Exception(f"Unhandled slice mode: {mode}")
     return slice_data
@@ -170,9 +187,12 @@ def store_annot_slice(annot_pixmap, annot_data, slice_idx, mode):
     if mode == 'axial': 
         annot_data[0, slice_idx] = bg
         annot_data[1, slice_idx] = fg
+    elif mode == 'coronal':
+        annot_data[0, :, slice_idx, :] = bg
+        annot_data[1, :, slice_idx, :] = fg
     elif mode == 'sagittal':
-        annot_data[0, :, :, slice_idx] = fg
-        annot_data[1, :, :, slice_idx] = bg
+        annot_data[0, :, :, slice_idx] = bg
+        annot_data[1, :, :, slice_idx] = fg
     else:
         raise Exception(f"Unhandled slice mode: {mode}")
     return annot_data

@@ -29,10 +29,15 @@ def add_windows_menu(main_window):
     contrast_settings_action.triggered.connect(main_window.contrast_slider.show)
     menu.addAction(contrast_settings_action)
 
-    show_sag_view_action = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Sagittal View', main_window)
-    show_sag_view_action.setStatusTip('Show sagittal view')
-    show_sag_view_action.triggered.connect(main_window.sag_viewer.show)
-    menu.addAction(show_sag_view_action)
+    show_sagittal_view_action = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Sagittal View', main_window)
+    show_sagittal_view_action.setStatusTip('Show sagittal view')
+    show_sagittal_view_action.triggered.connect(main_window.sagittal_viewer.show)
+    menu.addAction(show_sagittal_view_action)
+
+    show_coronal_view_action = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Coronal View', main_window)
+    show_coronal_view_action.setStatusTip('Show coronal view')
+    show_coronal_view_action.triggered.connect(main_window.coronal_viewer.show)
+    menu.addAction(show_coronal_view_action)
 
 
 def add_brush_menu(classes, im_viewer, menu_bar):

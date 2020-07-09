@@ -137,6 +137,13 @@ class ImViewer(QtWidgets.QWidget):
         if checked is not self.image_visible:
             self.show_hide_image()
 
+    def store_annot_slice(self):
+        if self.scene.annot_pixmap:
+            im_utils.store_annot_slice(self.scene.annot_pixmap,
+                                       self.parent.annot_data,
+                                       self.cur_slice_idx,
+                                       self.mode)
+
     def update_slice_index(self):
         """ Render the new slice as the slice index may have changed """
         # As we have likley moved to a new slice. The history needs erasing.

@@ -169,7 +169,6 @@ class RootPainter(QtWidgets.QMainWindow):
             # channel for bg (0) and fg (1)
             self.annot_data = np.zeros([2] + list(self.img_data.shape))
 
-
         if os.path.isfile(self.seg_path):
             self.seg_data = im_utils.load_image(self.seg_path)
         else:
@@ -177,7 +176,8 @@ class RootPainter(QtWidgets.QMainWindow):
             self.seg_data = None
 
         self.axial_viewer.update_image()
-        self.sag_viewer.update_image()
+        self.sagittal_viewer.update_image()
+        self.coronal_viewer.update_image()
 
         self.update_segmentation()
 
@@ -353,8 +353,17 @@ class RootPainter(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         if hasattr(self, 'contrast_slider'):
             self.contrast_slider.close()
-        if hasattr(self, 'sag_viewer'):
-            self.sag_viewer.close()
+        if hasattr(self, 'sagittal_viewer'):
+            self.sagittal_viewer.close()
+        if hasattr(self, 'coronal_viewer'):
+            self.coronal_viewer.close()
+
+    def update_viewer_slice(self):
+        self.axial_viewer.update_image_slice()
+        if self.sagittal_viewer.isVisble(): 
+            self.sagittal_viewer.update_image_slice()
+        if self.coronal_viewer.isVisble(): 
+            self.coronal_viewer.update_image_slice()
 
     def init_active_project_ui(self):
         # container for both nav and im_viewer.
@@ -370,13 +379,13 @@ class RootPainter(QtWidgets.QMainWindow):
         self.viewers_container.setLayout(self.viewers_layout)
 
         self.axial_viewer = ImViewer(self, 'axial')
-        self.sag_viewer = ImViewerWindow(self, 'sagittal')
+        self.sagittal_viewer = ImViewerWindow(self, 'sagittal')
+        self.coronal_viewer = ImViewerWindow(self, 'coronal')
         self.viewers_layout.addWidget(self.axial_viewer)
 
         container_layout.addWidget(self.viewers_container)
         self.contrast_slider = ContrastSlider(self.contrast_presets)
-        self.contrast_slider.changed.connect(self.axial_viewer.update_image_slice)
-        self.contrast_slider.changed.connect(self.sag_viewer.update_image_slice)
+        self.contrast_slider.changed.connect(self.update_viewer_slice)
 
         self.nav = NavWidget(self.image_fnames)
         self.update_file(self.image_path)
@@ -446,13 +455,17 @@ class RootPainter(QtWidgets.QMainWindow):
                     if not self.seg_mtime:
                         print('update seg data wityh', self.seg_path)
                         self.axial_viewer.seg_data = im_utils.load_image(self.seg_path)
+
                         self.axial_viewer.update_seg_slice()
+
+                        if self.sagittal_viewer.isVisble(): 
+                            self.sagittal_viewer.update_seg_slice()
+                        if self.coronal_viewer.isVisble(): 
+                            self.coronal_viewer.update_seg_slice()
+
                         self.seg_mtime = new_mtime
                         self.nav.next_image_button.setText('Save && Next >')
                         self.nav.next_image_button.setEnabled(True)
-                        if self.axial_viewer.seg_visible:
-                            self.axial_viewer.seg_pixmap_holder.setPixmap(self.seg_pixmap)
-                            self.sag_viewer.seg_pixmap_holder.setPixmap(self.seg_pixmap)
                         if hasattr(self, 'vis_widget'):
                             self.vis_widget.seg_checkbox.setText('Segmentation (S)')
                 except Exception as e:
@@ -621,22 +634,10 @@ class RootPainter(QtWidgets.QMainWindow):
             self.axial_viewer.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
 
     def save_annotation(self):
-
-        if self.axial_viewer.scene.annot_pixmap:
-            im_utils.store_annot_slice(self.axial_viewer.scene.annot_pixmap,
-                                       self.annot_data,
-                                       self.axial_viewer.cur_slice_idx,
-                                       self.axial_viewer.mode)
-
-        if self.sag_viewer.scene.annot_pixmap:
-            im_utils.store_annot_slice(self.sag_viewer.scene.annot_pixmap,
-                                       self.annot_data,
-                                       self.sag_viewer.cur_slice_idx,
-                                       self.sag_viewer.mode)
-
-        # check if it has data yet as when loading the first time
-        # it doesn't have anything to save
-        if self.annot_data is not None:
+        if self.annot_data:
+            self.axial_viewer.store_annot_slice()
+            self.sagittal_viewer.store_annot_slice()
+            self.coronal_viewer.store_annot_slice()
             fname = os.path.basename(self.image_path)
             fname = os.path.splitext(fname)[0] + '.npy'
             self.annot_path = maybe_save_annotation_3d(self.annot_data,

@@ -37,8 +37,12 @@ class SliceNav(QtWidgets.QWidget):
             and view mode """
         if mode == 'axial':
             slice_count = new_image.shape[0]
-        else:
+        elif mode == 'coronal':
+            slice_count = new_image.shape[1]
+        elif mode == 'sagittal':
             slice_count = new_image.shape[2]
+        else: 
+            raise Exception(f"Unhandled mode:{mode}")
 
         self.max_slice_idx = slice_count - 1
         self.slider.setMaximum(self.max_slice_idx)
