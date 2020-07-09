@@ -36,7 +36,6 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         self.last_x = None
         self.last_y = None
         self.annot_pixmap = None
-        self.brush_color = None
 
 
     def undo(self):
@@ -72,9 +71,9 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             painter = QtGui.QPainter(self.annot_pixmap)
             painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
             painter.drawPixmap(0, 0, self.annot_pixmap)
-            painter.setPen(QtGui.QPen(self.brush_color, 0, Qt.SolidLine,
+            painter.setPen(QtGui.QPen(self.parent.brush_color, 0, Qt.SolidLine,
                                       Qt.RoundCap, Qt.RoundJoin))
-            painter.setBrush(QtGui.QBrush(self.brush_color, Qt.SolidPattern))
+            painter.setBrush(QtGui.QBrush(self.parent.brush_color, Qt.SolidPattern))
             if self.brush_size == 1:
                 painter.drawPoint(circle_x, circle_y)
             else:
@@ -98,7 +97,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             painter = QtGui.QPainter(self.annot_pixmap)
             painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
             painter.drawPixmap(0, 0, self.annot_pixmap)
-            pen = QtGui.QPen(self.brush_color, self.brush_size, Qt.SolidLine,
+            pen = QtGui.QPen(self.parent.brush_color, self.brush_size, Qt.SolidLine,
                              Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen)
             pos = event.scenePos()

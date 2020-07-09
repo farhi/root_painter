@@ -141,13 +141,38 @@ def gen_composite(annot_dir, photo_dir, comp_dir, fname, ext='.jpg'):
             imsave(out_path, comp, quality=95)
 
 
-def store_annot_slice(annot_pixmap, annot_data, slice_idx):
+def get_slice(volume, slice_idx, mode):
+    if mode == 'axial':
+        if len(volume.shape) > 3:
+            # if more than 3 presume first is channel dimension
+            slice_data = volume[:, slice_idx, :, :]
+        else:
+            slice_data = volume[slice_idx, :, :]
+    elif mode == 'sagittal':
+        if len(volume.shape) > 3:
+            # if more than 3 presume first is channel dimension
+            slice_data = volume[:, :, :, slice_idx][::-1]
+        else:
+            slice_data = volume[:, :, slice_idx][::-1]
+    else:
+        raise Exception(f"Unhandled slice mode: {mode}")
+    return slice_data
+
+
+def store_annot_slice(annot_pixmap, annot_data, slice_idx, mode):
     """
     Update .annot_data at slice_idx
     so the values for fg and bg correspond to annot_pixmap)
     """
-    slice_rgb_np = qimage2ndarray.rgb_view(annot_pixmap.toImage())
+    slice_rgb_np = np.array(qimage2ndarray.rgb_view(annot_pixmap.toImage()))
     fg = slice_rgb_np[:, :, 0] > 0
     bg = slice_rgb_np[:, :, 1] > 0
-    annot_data[0, slice_idx] = bg
-    annot_data[1, slice_idx] = fg
+    if mode == 'axial': 
+        annot_data[0, slice_idx] = bg
+        annot_data[1, slice_idx] = fg
+    elif mode == 'sagittal':
+        annot_data[0, :, :, slice_idx] = fg
+        annot_data[1, :, :, slice_idx] = bg
+    else:
+        raise Exception(f"Unhandled slice mode: {mode}")
+    return annot_data

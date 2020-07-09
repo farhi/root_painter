@@ -21,11 +21,11 @@ from PyQt5 import QtWidgets
 
 class VisibilityWidget(QtWidgets.QWidget):
 
-    def __init__(self):
+    def __init__(self, layout_class):
         super().__init__()
-        self.initUI()
+        self.initUI(layout_class)
 
-    def initUI(self):
+    def initUI(self, layout_class):
         # container goes full width to allow contents to be center aligned within it.
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout()
@@ -33,7 +33,7 @@ class VisibilityWidget(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         widget.setLayout(layout)
 
-        container_layout = QtWidgets.QVBoxLayout()
+        container_layout = layout_class()
         self.setLayout(container_layout)
         container_layout.setContentsMargins(0, 0, 0, 0)
 

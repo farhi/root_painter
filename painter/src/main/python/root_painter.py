@@ -40,7 +40,6 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
-import qimage2ndarray
 
 from about import AboutWindow, LicenseWindow
 from create_project import CreateProjectWidget
@@ -50,15 +49,15 @@ from extract_count import ExtractCountWidget
 from extract_regions import ExtractRegionsWidget
 from extract_length import ExtractLengthWidget
 from extract_comp import ExtractCompWidget
-from im_viewer import ImViewer
+from im_viewer import ImViewer, ImViewerWindow
 from nav import NavWidget
-from visibility_widget import VisibilityWidget
 from file_utils import last_fname_with_annotations
 from file_utils import get_annot_path
-from file_utils import maybe_save_annotation_2d, maybe_save_annotation_3d
+from file_utils import maybe_save_annotation_3d
 from instructions import send_instruction
 from contrast_slider import ContrastSlider
 import im_utils
+import menus
 
 use_plugin("pil")
 
@@ -75,11 +74,13 @@ class RootPainter(QtWidgets.QMainWindow):
                                         sync_dir=sync_dir)
         self.contrast_presets = contrast_presets
         self.tracking = False
-        self.seg_mtime = False
+        self.seg_mtime = None
         self.pre_segment_count = 0
         self.im_width = None
         self.im_height = None
 
+        self.annot_data = None
+        self.seg_data = None
         self.initUI()
 
     def initUI(self):
@@ -149,29 +150,69 @@ class RootPainter(QtWidgets.QMainWindow):
         self.save_annotation()
         fname = os.path.basename(fpath)
         self.image_path = os.path.join(self.dataset_dir, fname)
-        seg_fname = os.path.splitext(fname)[0] + '.nii.gz' 
+        seg_fname = os.path.splitext(fname)[0] + '.nii.gz'
         self.seg_path = os.path.join(self.seg_dir, seg_fname)
         self.annot_path = get_annot_path(fname,
                                          self.train_annot_dir,
                                          self.val_annot_dir)
-        self.viewer.update_image(self.image_path, self.annot_path, self.seg_path)
+
+        self.img_data = im_utils.load_image(self.image_path)
+        fname = os.path.basename(self.image_path)
+
+        if self.annot_path and os.path.isfile(self.annot_path):
+            self.annot_data = np.array(np.load(self.annot_path))
+        else:
+            # otherwise create empty annotation array
+            # if we are working with 3D data (npy file) and the
+            # file hasn't been found then create an empty array to be
+            # used for storing the annotation information.
+            # channel for bg (0) and fg (1)
+            self.annot_data = np.zeros([2] + list(self.img_data.shape))
+
+
+        if os.path.isfile(self.seg_path):
+            self.seg_data = im_utils.load_image(self.seg_path)
+        else:
+            # it should come later
+            self.seg_data = None
+
+        self.axial_viewer.update_image()
+        self.sag_viewer.update_image()
+
+        self.update_segmentation()
+
+        self.contrast_slider.update_range(self.img_data)
+
         self.segment_current_image()
         self.update_window_title()
 
-        
+    def update_segmentation(self):
+        if os.path.isfile(self.seg_path):
+            self.seg_mtime = os.path.getmtime(self.seg_path)
+            self.nav.next_image_button.setText('Save && Next >')
+            if hasattr(self, 'vis_widget'):
+                self.vis_widget.seg_checkbox.setText('Segmentation (S)')
+            self.nav.next_image_button.setEnabled(True)
+        else:
+            self.nav.next_image_button.setEnabled(False)
+            self.nav.next_image_button.setText('Loading Segmentation...')
+            if hasattr(self, 'vis_widget'):
+                self.vis_widget.seg_checkbox.setText('Segmentation (Loading)')
+
+
     def segment_image(self, image_fnames):
         # send instruction to segment the new image.
         seg_classes = copy.deepcopy(self.classes)
         # Tell server to segment the bg with 0 alpha, appplied to 2D only
         assert seg_classes[0][0] == 'Background'
         seg_classes[0][1][3] = 0
-        # we assume .npy means 3D 
+        # we assume .npy means 3D
         # We also assume that the files are either all 2D
         # or all 3D
         dimensions = 2
         if image_fnames[0].endswith('.npy'):
             dimensions = 3
-            seg_classes = ['Foreground'] 
+            seg_classes = ['Foreground']
         # send instruction to segment the new image.
         content = {
             "dataset_dir": self.dataset_dir,
@@ -314,51 +355,52 @@ class RootPainter(QtWidgets.QMainWindow):
         container = QtWidgets.QWidget()
         container_layout = QtWidgets.QVBoxLayout()
         container_layout.setContentsMargins(0, 0, 0, 0)
+        self.container_layout = container_layout
         container.setLayout(container_layout)
         self.setCentralWidget(container)
 
-        self.viewer = ImViewer(self)
-        container_layout.addWidget(self.viewer)
+        self.viewers_container = QtWidgets.QWidget()
+        self.viewers_layout = QtWidgets.QHBoxLayout()
+        self.viewers_container.setLayout(self.viewers_layout)
+
+        self.axial_viewer = ImViewer(self, 'axial')
+        self.sag_viewer = ImViewerWindow(self, 'sagittal')
+        self.sag_viewer.setObjectName('sag_viewer') # to allow reference when it is added / removed.
+        self.viewers_layout.addWidget(self.axial_viewer)
+        #self.viewers_layout.addWidget(self.sag_viewer)
+
+        container_layout.addWidget(self.viewers_container)
 
         # contrast slider
         self.contrast_slider = ContrastSlider(self.contrast_presets)
         self.contrast_slider.show()
-        self.contrast_slider.changed.connect(self.viewer.update_image_slice)
-        
+        self.contrast_slider.changed.connect(self.axial_viewer.update_image_slice)
+
         self.nav = NavWidget(self.image_fnames)
         self.update_file(self.image_path)
 
         # bottom bar
-        bottom_bar = QtWidgets.QWidget()
-        bottom_bar_layout = QtWidgets.QHBoxLayout()
-        # left, top, right, bottom
-        bottom_bar_layout.setContentsMargins(20, 0, 20, 20)
-        bottom_bar_layout.setSpacing(0)
-        bottom_bar.setLayout(bottom_bar_layout)
+        #bottom_bar = QtWidgets.QWidget()
+        #bottom_bar_layout = QtWidgets.QHBoxLayout()
+        ## left, top, right, bottom
+        #bottom_bar_layout.setContentsMargins(20, 0, 20, 20)
+        #bottom_bar_layout.setSpacing(0)
+        #bottom_bar.setLayout(bottom_bar_layout)
 
-        container_layout.addWidget(bottom_bar)
+        #container_layout.addWidget(bottom_bar)
 
         # Bottom bar left
-        self.vis_widget = VisibilityWidget()
-        self.vis_widget.setMaximumWidth(200)
-        self.vis_widget.setMinimumWidth(200)
-        self.vis_widget.seg_checkbox.stateChanged.connect(self.seg_checkbox_change)
-        self.vis_widget.annot_checkbox.stateChanged.connect(self.annot_checkbox_change)
-        self.vis_widget.im_checkbox.stateChanged.connect(self.im_checkbox_change)
-        bottom_bar_layout.addWidget(self.vis_widget)
+        #bottom_bar_layout.addWidget(self.vis_widget)
 
         # bottom bar right
         bottom_bar_r = QtWidgets.QWidget()
         bottom_bar_r_layout = QtWidgets.QVBoxLayout()
         bottom_bar_r.setLayout(bottom_bar_r_layout)
-        bottom_bar_layout.addWidget(bottom_bar_r)
-
+        self.axial_viewer.bottom_bar_layout.addWidget(bottom_bar_r)
         # Nav
         self.nav.file_change.connect(self.update_file)
-
         self.nav.image_path = self.image_path
         self.nav.update_nav_label()
-
         # info label
         info_container = QtWidgets.QWidget()
         info_container_layout = QtWidgets.QHBoxLayout()
@@ -370,19 +412,21 @@ class RootPainter(QtWidgets.QMainWindow):
         info_container_layout.setContentsMargins(0, 0, 0, 0)
         info_container.setLayout(info_container_layout)
         self.info_label = info_label
-
+        # add nav and info label to the axial viewer.
         bottom_bar_r_layout.addWidget(info_container)
         bottom_bar_r_layout.addWidget(self.nav)
+
 
         self.add_menu()
 
         self.resize(container_layout.sizeHint())
-        
-        self.viewer.update_cursor()
+
+        self.axial_viewer.update_cursor()
+
         def view_fix():
             """ hack for linux bug """
-            self.viewer.update_cursor()
-            self.viewer.graphics_view.fit_to_view()
+            self.axial_viewer.update_cursor()
+            self.axial_viewer.graphics_view.fit_to_view()
         QtCore.QTimer.singleShot(100, view_fix)
 
     def track_changes(self):
@@ -404,19 +448,22 @@ class RootPainter(QtWidgets.QMainWindow):
                     os.remove(os.path.join(self.message_dir, m))
                 except Exception as e:
                     print('Caught exception when trying to detele msg', e)
+            # if a segmentation exists (on disk)
             if hasattr(self, 'seg_path') and os.path.isfile(self.seg_path):
                 try:
                     # seg mtime is not actually used any more.
                     new_mtime = os.path.getmtime(self.seg_path)
                     # seg_mtime is None before the seg is loaded.
                     if not self.seg_mtime:
-                        self.viewer.seg_data = im_utils.load_image(self.seg_path)
-                        self.viewer.update_seg_slice_pixmap()
+                        print('update seg data wityh', self.seg_path)
+                        self.axial_viewer.seg_data = im_utils.load_image(self.seg_path)
+                        self.axial_viewer.update_seg_slice()
                         self.seg_mtime = new_mtime
                         self.nav.next_image_button.setText('Save && Next >')
                         self.nav.next_image_button.setEnabled(True)
-                        if self.viewer.seg_visible:
-                            self.viewer.seg_pixmap_holder.setPixmap(self.seg_pixmap)
+                        if self.axial_viewer.seg_visible:
+                            self.axial_viewer.seg_pixmap_holder.setPixmap(self.seg_pixmap)
+                            self.sag_viewer.seg_pixmap_holder.setPixmap(self.seg_pixmap)
                         if hasattr(self, 'vis_widget'):
                             self.vis_widget.seg_checkbox.setText('Segmentation (S)')
                 except Exception as e:
@@ -424,11 +471,10 @@ class RootPainter(QtWidgets.QMainWindow):
                     # sometimes problems reading file.
                     # don't worry about this exception
             else:
-                pass
-                # print('no seg found', end=",")
+                print('no seg found', end=",")
             QtCore.QTimer.singleShot(500, check)
         QtCore.QTimer.singleShot(500, check)
-    
+
     def close_project_window(self):
         self.close()
         self.closed.emit()
@@ -442,65 +488,32 @@ class RootPainter(QtWidgets.QMainWindow):
         self.close_project_action = QtWidgets.QAction(QtGui.QIcon(""), "Close project", self)
         self.project_menu.addAction(self.close_project_action)
         self.close_project_action.triggered.connect(self.close_project_window)
-
-        edit_menu = menu_bar.addMenu("Edit")
-
-        # Undo
-        undo_action = QtWidgets.QAction(QtGui.QIcon(""), "Undo", self)
-        undo_action.setShortcut("Z")
-        edit_menu.addAction(undo_action)
-        undo_action.triggered.connect(self.viewer.scene.undo)
-
-        # Redo
-        redo_action = QtWidgets.QAction(QtGui.QIcon(""), "Redo", self)
-        redo_action.setShortcut("Ctrl+Shift+Z")
-        edit_menu.addAction(redo_action)
-        redo_action.triggered.connect(self.viewer.scene.redo)
+        menus.add_edit_menu(self, self.axial_viewer, menu_bar)
 
         options_menu = menu_bar.addMenu("Options")
+
         # pre segment count
         pre_segment_count_action = QtWidgets.QAction(QtGui.QIcon(""), "Pre-Segment", self)
         options_menu.addAction(pre_segment_count_action)
         pre_segment_count_action.triggered.connect(self.open_pre_segment_count_dialog)
         self.menu_bar = menu_bar
-        self.add_brushes()
 
-        ## View menu
-        # Fit to view
-        view_menu = menu_bar.addMenu('View')
-        fit_to_view_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Fit to View', self)
-        fit_to_view_btn.setShortcut('Ctrl+F')
-        fit_to_view_btn.setStatusTip('Fit image to view')
-        fit_to_view_btn.triggered.connect(self.viewer.graphics_view.fit_to_view)
-        view_menu.addAction(fit_to_view_btn)
+        # add brushes menu for axial slice navigation
+        menus.add_brush_menu(self.classes, self.axial_viewer, self.menu_bar)
 
-        # Actual size
-        actual_size_view_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'), 'Actual size', self)
-        actual_size_view_btn.setShortcut('Ctrl+A')
-        actual_size_view_btn.setStatusTip('Show image at actual size')
-        actual_size_view_btn.triggered.connect(self.viewer.graphics_view.show_actual_size)
-        view_menu.addAction(actual_size_view_btn)
+        # add view menu for axial slice navigation.
+        view_menu = menus.add_view_menu(self, self.axial_viewer, self.menu_bar)
 
-        toggle_seg_visibility_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                                      'Toggle segmentation visibility', self)
-        toggle_seg_visibility_btn.setShortcut('S')
-        toggle_seg_visibility_btn.setStatusTip('Show or hide segmentation')
-        toggle_seg_visibility_btn.triggered.connect(self.show_hide_seg)
-        view_menu.addAction(toggle_seg_visibility_btn)
-
-        toggle_annot_visibility_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                                        'Toggle annotation visibility', self)
-        toggle_annot_visibility_btn.setShortcut('A')
-        toggle_annot_visibility_btn.setStatusTip('Show or hide annotation')
-        toggle_annot_visibility_btn.triggered.connect(self.show_hide_annot)
-        view_menu.addAction(toggle_annot_visibility_btn)
-
-        toggle_image_visibility_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                                        'Toggle image visibility', self)
-        toggle_image_visibility_btn.setShortcut('I')
-        toggle_image_visibility_btn.setStatusTip('Show or hide image')
-        toggle_image_visibility_btn.triggered.connect(self.show_hide_image)
-        view_menu.addAction(toggle_image_visibility_btn)
+        def show_hide_sag_view():
+            if self.viewers_container.findChild(QtWidgets.QWidget, 'sag_viewer'):
+                self.sag_viewer.hide()
+            else:
+                self.sag_viewer.show()
+        toggle_sag_view_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
+                                                'Toggle Sagittal View', self)
+        toggle_sag_view_btn.setStatusTip('Show or hide sagittal view')
+        toggle_sag_view_btn.triggered.connect(show_hide_sag_view)
+        view_menu.addAction(toggle_sag_view_btn)
 
         self.add_contrast_setting_options(view_menu)
 
@@ -551,23 +564,6 @@ class RootPainter(QtWidgets.QMainWindow):
                 view_menu.addAction(preset_btn)
             preset_count += 1
             add_preset_option(preset, preset_count)
-
-    def add_brush(self, name, color_val, shortcut=None):
-        color_action = QtWidgets.QAction(QtGui.QIcon(""), name, self)
-        if shortcut:
-            color_action.setShortcut(shortcut)
-        self.brush_menu.addAction(color_action)
-        color_action.triggered.connect(partial(self.set_color,
-                                               color=QtGui.QColor(*color_val)))
-        if self.viewer.scene.brush_color is None:
-            self.viewer.scene.brush_color = QtGui.QColor(*color_val)
-
-    def add_brushes(self):
-
-        self.brush_menu = self.menu_bar.addMenu("Brushes")
-        for name, rgba, shortcut in self.classes:
-            self.add_brush(name, rgba, shortcut)
-        self.add_brush('Eraser', (255, 205, 180, 0), 'E')
 
     def add_measurements_menu(self, menu_bar):
         # Measurements
@@ -631,37 +627,6 @@ class RootPainter(QtWidgets.QMainWindow):
         }
         self.send_instruction('start_training', content)
 
-    def seg_checkbox_change(self, state):
-        checked = (state == QtCore.Qt.Checked)
-        if checked is not self.viewer.seg_visible:
-            self.viewer.show_hide_seg()
-
-    def annot_checkbox_change(self, state):
-        checked = (state == QtCore.Qt.Checked)
-        if checked is not self.viewer.annot_visible:
-            self.viewer.show_hide_annot()
-
-    def im_checkbox_change(self, state):
-        checked = (state == QtCore.Qt.Checked)
-        if checked is not self.viewer.image_visible:
-            self.viewer.show_hide_image()
-
-    def show_hide_seg(self):
-        self.viewer.show_hide_seg()
-        self.vis_widget.seg_checkbox.setChecked(self.viewer.seg_visible)
-
-    def show_hide_image(self):
-        self.viewer.show_hide_image()
-        self.vis_widget.im_checkbox.setChecked(self.viewer.image_visible)
-
-    def show_hide_annot(self):
-        self.viewer.show_hide_annot()
-        self.vis_widget.annot_checkbox.setChecked(self.viewer.annot_visible)
-
-    def set_color(self, _event, color=None):
-        self.viewer.scene.brush_color = color
-        self.viewer.update_cursor()
-
     def open_pre_segment_count_dialog(self):
         new_count, ok = QtWidgets.QInputDialog.getInt(self, "",
                                                       "Select Pre-Segment count",
@@ -674,18 +639,28 @@ class RootPainter(QtWidgets.QMainWindow):
         # Check if control key is up to disble it.
         modifiers = QtWidgets.QApplication.keyboardModifiers()
         if not modifiers & QtCore.Qt.ControlModifier:
-            self.viewer.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
+            self.axial_viewer.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
 
     def save_annotation(self):
-        if self.viewer.scene.annot_pixmap:
-            im_utils.store_annot_slice(self.viewer.scene.annot_pixmap,
-                                       self.viewer.annot_data, self.viewer.cur_slice_idx)
+
+        if self.axial_viewer.scene.annot_pixmap:
+            im_utils.store_annot_slice(self.axial_viewer.scene.annot_pixmap,
+                                       self.annot_data,
+                                       self.axial_viewer.cur_slice_idx,
+                                       self.axial_viewer.mode)
+
+        if self.sag_viewer.scene.annot_pixmap:
+            im_utils.store_annot_slice(self.sag_viewer.scene.annot_pixmap,
+                                       self.annot_data,
+                                       self.sag_viewer.cur_slice_idx,
+                                       self.sag_viewer.mode)
+
         # check if it has data yet as when loading the first time
         # it doesn't have anything to save
-        if self.viewer.annot_data is not None:
+        if self.annot_data is not None:
             fname = os.path.basename(self.image_path)
             fname = os.path.splitext(fname)[0] + '.npy'
-            self.annot_path = maybe_save_annotation_3d(self.viewer.annot_data,
+            self.annot_path = maybe_save_annotation_3d(self.annot_data,
                                                        self.annot_path,
                                                        fname,
                                                        self.train_annot_dir,
