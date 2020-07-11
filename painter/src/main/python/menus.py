@@ -6,6 +6,21 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 
 
+def add_bounding_box_menu(window, im_viewer, menu_bar):
+    box_menu = menu_bar.addMenu("Bounding box")
+    # Define
+    define_action = QtWidgets.QAction(QtGui.QIcon(""), "Define", window)
+    define_action.setShortcut("Alt+B")
+    box_menu.addAction(define_action)
+    define_action.triggered.connect(im_viewer.scene.start_bounding_box)
+    # Apply
+    apply_action = QtWidgets.QAction(QtGui.QIcon(""), "Apply", window)
+    apply_action.setShortcut("Alt+A")
+    box_menu.addAction(apply_action)
+    apply_action.triggered.connect(im_viewer.scene.apply_bounding_box)
+    return box_menu
+
+
 def add_edit_menu(window, im_viewer, menu_bar):
     edit_menu = menu_bar.addMenu("Edit")
     # Undo
