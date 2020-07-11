@@ -78,6 +78,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         #self.rect_item.setBrush(QtGui.QBrush(QtGui.QColor(40, 120, 200, 70),
                                 #style = QtCore.Qt.SolidPattern))
 
+        QtWidgets.QApplication.instance().setOverrideCursor(Qt.ArrowCursor)
         self.box_enabled = True
         
         print('start drawing bounding box now')
