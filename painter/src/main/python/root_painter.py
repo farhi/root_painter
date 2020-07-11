@@ -45,10 +45,6 @@ from about import AboutWindow, LicenseWindow
 from create_project import CreateProjectWidget
 from create_dataset import CreateDatasetWidget
 from segment_folder import SegmentFolderWidget
-from extract_count import ExtractCountWidget
-from extract_regions import ExtractRegionsWidget
-from extract_length import ExtractLengthWidget
-from extract_comp import ExtractCompWidget
 from im_viewer import ImViewer, ImViewerWindow
 from nav import NavWidget
 from file_utils import last_fname_with_annotations
@@ -194,6 +190,7 @@ class RootPainter(QtWidgets.QMainWindow):
                 self.vis_widget.seg_checkbox.setText('Segmentation (S)')
             self.nav.next_image_button.setEnabled(True)
         else:
+            self.seg_mtime = None
             self.nav.next_image_button.setEnabled(False)
             self.nav.next_image_button.setText('Loading Segmentation...')
             if hasattr(self, 'vis_widget'):
@@ -292,9 +289,6 @@ class RootPainter(QtWidgets.QMainWindow):
         self.segment_folder_btn.triggered.connect(show_segment_folder)
         self.network_menu.addAction(self.segment_folder_btn)
 
-        self.add_measurements_menu(menu_bar)
-        self.add_extras_menu(menu_bar)
-
         self.add_about_menu(menu_bar)
 
         # Add project btns to open window (so it shows something useful)
@@ -378,6 +372,7 @@ class RootPainter(QtWidgets.QMainWindow):
         container = QtWidgets.QWidget()
         container_layout = QtWidgets.QVBoxLayout()
         container_layout.setContentsMargins(0, 0, 0, 0)
+        self.container = container
         self.container_layout = container_layout
         container.setLayout(container_layout)
         self.setCentralWidget(container)
@@ -422,11 +417,8 @@ class RootPainter(QtWidgets.QMainWindow):
         bottom_bar_r_layout.addWidget(info_container)
         bottom_bar_r_layout.addWidget(self.nav)
 
-
         self.add_menu()
-
         self.resize(container_layout.sizeHint())
-
         self.axial_viewer.update_cursor()
 
         def view_fix():
@@ -460,15 +452,13 @@ class RootPainter(QtWidgets.QMainWindow):
                     # seg mtime is not actually used any more.
                     new_mtime = os.path.getmtime(self.seg_path)
                     # seg_mtime is None before the seg is loaded.
-                    if not self.seg_mtime:
-                        print('update seg data wityh', self.seg_path)
-                        self.axial_viewer.seg_data = im_utils.load_image(self.seg_path)
-
+                    if self.seg_mtime is None or new_mtime > self.seg_mtime:
+                        self.seg_data = im_utils.load_image(self.seg_path)
                         self.axial_viewer.update_seg_slice()
 
-                        if self.sagittal_viewer.isVisble(): 
+                        if self.sagittal_viewer.isVisible(): 
                             self.sagittal_viewer.update_seg_slice()
-                        if self.coronal_viewer.isVisble(): 
+                        if self.coronal_viewer.isVisible(): 
                             self.coronal_viewer.update_seg_slice()
 
                         self.seg_mtime = new_mtime
@@ -481,7 +471,8 @@ class RootPainter(QtWidgets.QMainWindow):
                     # sometimes problems reading file.
                     # don't worry about this exception
             else:
-                print('no seg found', end=",")
+                pass
+                # print('no seg found')
             QtCore.QTimer.singleShot(500, check)
         QtCore.QTimer.singleShot(500, check)
 
@@ -499,6 +490,8 @@ class RootPainter(QtWidgets.QMainWindow):
         self.project_menu.addAction(self.close_project_action)
         self.close_project_action.triggered.connect(self.close_project_window)
         menus.add_edit_menu(self, self.axial_viewer, menu_bar)
+
+        menus.add_bounding_box_menu(self, self.axial_viewer, menu_bar)
 
         options_menu = menu_bar.addMenu("Options")
 
@@ -545,8 +538,7 @@ class RootPainter(QtWidgets.QMainWindow):
         #                                       'Segment current image', self)
         # segment_image_btn.triggered.connect(self.segment_current_image)
         # network_menu.addAction(segment_image_btn)
-        self.add_measurements_menu(menu_bar)
-        self.add_extras_menu(menu_bar)
+
         menus.add_windows_menu(self)
 
     def add_contrast_setting_options(self, view_menu):
@@ -565,39 +557,6 @@ class RootPainter(QtWidgets.QMainWindow):
             preset_count += 1
             add_preset_option(preset, preset_count)
 
-    def add_measurements_menu(self, menu_bar):
-        # Measurements
-        measurements_menu = menu_bar.addMenu('Measurements')
-        # object count
-        object_count_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                             'Extract count', self)
-        def show_extract_count():
-            self.extract_count_widget = ExtractCountWidget()
-            self.extract_count_widget.show()
-        object_count_btn.triggered.connect(show_extract_count)
-        measurements_menu.addAction(object_count_btn)
-
-        # length
-        length_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                       'Extract length', self)
-        def show_extract_length():
-            self.extract_length_widget = ExtractLengthWidget()
-            self.extract_length_widget.show()
-        length_btn.triggered.connect(show_extract_length)
-        measurements_menu.addAction(length_btn)
-
-        # region props
-        region_props_btn = QtWidgets.QAction(QtGui.QIcon('missing.png'),
-                                             'Extract region properties', self)
-        def show_extract_region_props():
-            self.extract_regions_widget = ExtractRegionsWidget()
-            self.extract_regions_widget.show()
-        region_props_btn.triggered.connect(show_extract_region_props)
-        measurements_menu.addAction(region_props_btn)
-
-    def show_extract_comp(self):
-        self.extract_comp_widget = ExtractCompWidget()
-        self.extract_comp_widget.show()
 
     def stop_training(self):
         self.info_label.setText("Stopping training...")
@@ -642,7 +601,7 @@ class RootPainter(QtWidgets.QMainWindow):
             self.axial_viewer.graphics_view.setDragMode(QtWidgets.QGraphicsView.NoDrag)
 
     def save_annotation(self):
-        if self.annot_data:
+        if self.annot_data is not None:
             self.axial_viewer.store_annot_slice()
             self.sagittal_viewer.store_annot_slice()
             self.coronal_viewer.store_annot_slice()
