@@ -32,6 +32,13 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
         self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
         self.setAcceptHoverEvents(True)
 
+    def hoverEnterEvent(self, event):
+        super().hoverEnterEvent(event)
+        QtWidgets.QApplication.instance().setOverrideCursor(Qt.SizeAllCursor)
+
+    def hoverLeaveEvent(self, event):
+        QtWidgets.QApplication.restoreOverrideCursor()
+        
     def mouseMoveEvent(self, event): 
         super().mouseMoveEvent(event)
         print('circle dragged')
@@ -73,7 +80,6 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.setRect(x, y, width, height)
         self.tl_circle.setPos(x-self.x_start, y-self.y_start)
         self.bl_circle.setPos(x-self.x_start, (y-self.y_start) + height)
-
         self.tr_circle.setPos((x-self.x_start) + width, y-self.y_start)
         self.br_circle.setPos((x-self.x_start) + width, (y-self.y_start) + height)
 
@@ -81,7 +87,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.x_start = x
         self.y_start = y
 
-    def oldMouseMoveEvent(self, event): 
+    def oldmouseMoveEvent(self, event): 
         print('circle selected', self.circle.isSelected())
         if False:
             new_pos = event.scenePos()
@@ -92,16 +98,18 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
             new_top = new_pos.y() - old_pos.y() + old_top
             self.setPos(QtCore.QPointF(new_left, new_top))
 
-
     def hoverEnterEvent(self, event):
         QtWidgets.QApplication.instance().setOverrideCursor(Qt.OpenHandCursor)
+        super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        print('hover leave')
-
+        super().hoverLeaveEvent(event)
+        QtWidgets.QApplication.restoreOverrideCursor()
+ 
     def mousePressEvent(self, event):
-        print('press event')
+        super().mousePressEvent(event)
+        QtWidgets.QApplication.instance().setOverrideCursor(Qt.ClosedHandCursor)
 
-
-
-
+    def mouseReleaseEvent(self, event):
+        QtWidgets.QApplication.restoreOverrideCursor()
+        super().mouseReleaseEvent(event)
