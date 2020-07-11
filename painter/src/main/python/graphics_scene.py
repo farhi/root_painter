@@ -114,9 +114,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         
         if self.box_enabled:
             if self.bounding_box is None:
-                print('add box', event.scenePos().x(), event.scenePos().y())
                 self.bounding_box = BoundingBox(event.scenePos().x(), event.scenePos().y())
-                print('assign x start')
                 self.bounding_box.set_start(event.scenePos().x(), event.scenePos().y())
                 self.addItem(self.bounding_box) 
         elif not modifiers & QtCore.Qt.ControlModifier and self.parent.annot_visible:
@@ -161,59 +159,14 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         if self.box_resizing:
             self.box_resizing = False
 
-    def map_box_point(self, mouse_event):
-        """ The bounding box location must be specified with reference to 
-            the top level component, but the mouse events are relative 
-            to the nested component. Map the mouse events to
-            values appropriate for setting the box coordinates
-            
-            There is likley a built in PyQt function that I could use instead
-            of this hack but I haven't been able to find it yet.
-        """
-        p = self.parent.graphics_view.mapFromScene(mouse_event.scenePos())
-        x = p.x()
-        y = p.y()
-        for widget in [self.parent,
-                       self.parent.graphics_view,
-                       self.parent.inner_container,
-                       self.parent.parent.container]:
-            x += widget.geometry().x()
-            y += widget.geometry().y()
-        return x, y
-
-    def box_point_to_pixmap_loc(self, x, y):
-        for widget in [self.parent,
-                       self.parent.graphics_view,
-                       self.parent.inner_container,
-                       self.parent.parent.container]:
-            x -= widget.geometry().x()
-            y -= widget.geometry().y()
-        return x, y
-
+    
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
         if self.box_enabled:
             if self.mouse_down and self.box_resizing:
-                x_start, y_start = self.bounding_box.get_start()
-                print('x start y start', x_start, y_start)
-                 
                 pos = event.scenePos()
                 x, y = pos.x(), pos.y()
-
-                #box_x = self.bounding_box.rect().x()
-                #box_y = self.bounding_box.rect().y()
-
-                #print('moving', box_x, box_y)
-                print('x', x, 'x_start', x_start)
-                width = abs(x - x_start)
-                height = abs(y - y_start)
-                x = min(x, x_start)
-                y = min(y, y_start)
-
-                print('min', 'x', x)
-                print(x, width)
-
-                self.bounding_box.setRect(x, y, width, height)
+                self.bounding_box.resize_drag(x, y)
 
         elif self.drawing:
             painter = QtGui.QPainter(self.annot_pixmap)
