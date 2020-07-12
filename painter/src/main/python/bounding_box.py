@@ -214,6 +214,5 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         QtWidgets.QApplication.instance().setOverrideCursor(Qt.ClosedHandCursor)
 
     def mouseReleaseEvent(self, event):
-        #QtWidgets.QApplication.instance().setOverrideCursor(Qt.ArrowCursor)
         QtWidgets.QApplication.restoreOverrideCursor()
         super().mouseReleaseEvent(event)
