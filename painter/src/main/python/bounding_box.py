@@ -23,31 +23,47 @@ from PyQt5.QtCore import Qt
 
 class Handle(QtWidgets.QGraphicsEllipseItem):
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, parent, cursor):
         self.circle_diam = 3
         super().__init__(x, y, self.circle_diam, self.circle_diam)
+        self.setParentItem(parent)
+        self.cursor = cursor
+        self.parent = parent
         self.setPen(QtGui.QPen(QtGui.QColor(250, 250, 250), 0.5, QtCore.Qt.DashLine))
         self.setBrush(QtGui.QBrush(QtGui.QColor(40, 120, 250), style = QtCore.Qt.SolidPattern))
-        self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable, True)
-        self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
+        #self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable, True)
+        #self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
         self.setAcceptHoverEvents(True)
+        self.drag_start_x = None
+        self.drag_start_y = None
 
     def hoverEnterEvent(self, event):
         super().hoverEnterEvent(event)
-        # TODO: This cursor is wrong. See preview
-        QtWidgets.QApplication.instance().setOverrideCursor(Qt.SizeAllCursor)
+        QtWidgets.QApplication.instance().setOverrideCursor(self.cursor)
+
+    def mousePressEvent(self, event):
+        self.drag_start_x = event.scenePos().x()
+        self.drag_start_y = event.scenePos().y()
 
     def mouseReleaseEvent(self, event):
-        super().mouseReleaseEvent(event)
-        self.on_move(event)
+        if hasattr(self, 'on_release'):
+            self.on_release() 
 
     def hoverLeaveEvent(self, event):
         QtWidgets.QApplication.restoreOverrideCursor()
         
     def mouseMoveEvent(self, event): 
-        super().mouseMoveEvent(event)
+        new_x = event.scenePos().x()
+        new_y = event.scenePos().y()
+        diff_x = new_x - self.drag_start_x
+        diff_y = new_y - self.drag_start_y
+        self.setPos(self.pos().x() + diff_x, self.pos().y() + diff_y)
+        self.drag_start_x = new_x
+        self.drag_start_y = new_y
+
+        #super().mouseMoveEvent(event)
         if self.on_move is not None:
-            self.on_move(event)
+            self.on_move(event, diff_x, diff_y)
 
     def setPosR(self, x, y):
         # use x and y as center of position
@@ -56,46 +72,39 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
 
 class BoundingBox(QtWidgets.QGraphicsRectItem):
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, parent):
         start_rect = QtCore.QRectF(x, y, 20, 20)
         super().__init__(start_rect)
+        self.parent = parent
         self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable, True)
         self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
         self.setAcceptHoverEvents(True)
         self.setPen(QtGui.QPen(QtGui.QColor(60, 60, 60), 0.2, QtCore.Qt.DashLine))
-        self.setBrush(QtGui.QBrush(QtGui.QColor(40, 120, 200, 70), style = QtCore.Qt.SolidPattern))
-
-        self.tl_circle = Handle(x, y)
-        self.tl_circle.setParentItem(self)
+        self.setBrush(QtGui.QBrush(QtGui.QColor(40, 120, 200, 70),
+                                   style=QtCore.Qt.SolidPattern))
+        self.tl_circle = Handle(x, y, self,  Qt.SizeFDiagCursor)
         self.tl_circle.on_move = self.tl_handle_moved
-        self.bl_circle = Handle(x, y)
-        self.bl_circle.setParentItem(self)
+        self.tl_circle.on_release = self.release_handle
+        self.bl_circle = Handle(x, y, self, Qt.SizeBDiagCursor)
         self.bl_circle.on_move = self.bl_handle_moved
-        self.tr_circle = Handle(x, y)
-        self.tr_circle.setParentItem(self)
+        self.bl_circle.on_release = self.release_handle
+        self.tr_circle = Handle(x, y, self, Qt.SizeBDiagCursor)
+        self.tr_circle.on_release = self.release_handle
         self.tr_circle.on_move = self.tr_handle_moved
-        self.br_circle = Handle(x, y)
-        self.br_circle.setParentItem(self)
+        self.br_circle = Handle(x, y, self, Qt.SizeFDiagCursor)
         self.br_circle.on_move = self.br_handle_moved
+        self.br_circle.on_release = self.release_handle
         
-    def tl_handle_moved(self, event):
-        point = QtCore.QPointF(event.scenePos().x(), event.scenePos().y())
-        point_item = self.mapFromScene(point)
-        new_x = point_item.x()
+    def tl_handle_moved(self, event, diff_x, diff_y):
+        new_x = self.rect().x() + diff_x
         old_x = self.rect().x()
         width_increase = old_x - new_x
         new_width = self.rect().width() + width_increase
-
-        new_y = point_item.y()
+        new_y = self.rect().y() + diff_y
         old_y = self.rect().y()
         height_increase = old_y - new_y
         new_height = self.rect().height() + height_increase
-
-        self.setRect(point_item.x(),
-                     point_item.y(),
-                     new_width,
-                     new_height)
-
+        self.setRect(new_x, new_y, new_width, new_height)
         self.bl_circle.setPos(self.tl_circle.pos().x(), 
                               self.tl_circle.pos().y() + new_height)
         self.tr_circle.setPos(self.tl_circle.pos().x() + new_width, 
@@ -103,16 +112,14 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.br_circle.setPos(self.tl_circle.pos().x() + new_width, 
                               self.tl_circle.pos().y() + new_height)
 
-    def bl_handle_moved(self, event):
-        point = QtCore.QPointF(event.scenePos().x(), event.scenePos().y())
-        point_item = self.mapFromScene(point)
-        width_increase = self.rect().x() - point_item.x()
+    def bl_handle_moved(self, event, diff_x, diff_y):
+        old_x = self.rect().x()
+        new_x = old_x + diff_x
+        width_increase = old_x - new_x
         new_width = self.rect().width() + width_increase
-        new_height = point_item.y() - self.rect().y()
-        self.setRect(point_item.x(),
-                     point_item.y() - new_height,
-                     new_width,
-                     new_height)
+        old_y = self.rect().y() 
+        new_height = self.rect().height() + diff_y
+        self.setRect(new_x, old_y, new_width, new_height)
         self.tl_circle.setPos(self.bl_circle.pos().x(), 
                               self.bl_circle.pos().y() - new_height)
         self.tr_circle.setPos(self.bl_circle.pos().x() + new_width, 
@@ -120,16 +127,12 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.br_circle.setPos(self.bl_circle.pos().x() + new_width, 
                               self.bl_circle.pos().y())
 
-    def tr_handle_moved(self, event):
-        point = QtCore.QPointF(event.scenePos().x(), event.scenePos().y())
-        point_item = self.mapFromScene(point)
-        new_width = point_item.x() - self.rect().x()
-        new_y = point_item.y()
-        old_y = self.rect().y()
-        height_increase = old_y - new_y
-        new_height = self.rect().height() + height_increase
-        self.setRect(point_item.x() - new_width, point_item.y(), new_width, new_height)
-
+    def tr_handle_moved(self, event, diff_x, diff_y):
+        old_x = self.rect().x()
+        new_width = self.rect().width() + diff_x
+        new_y = self.rect().y() + diff_y
+        new_height = self.rect().height() - diff_y
+        self.setRect(old_x, new_y, new_width, new_height)
         self.br_circle.setPos(self.tr_circle.pos().x(), 
                               self.tr_circle.pos().y() + new_height)
         self.tl_circle.setPos(self.tr_circle.pos().x() - new_width, 
@@ -137,17 +140,12 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.bl_circle.setPos(self.tr_circle.pos().x() - new_width, 
                               self.tr_circle.pos().y() + new_height)
 
-    def br_handle_moved(self, event):
-        point = QtCore.QPointF(event.scenePos().x(), event.scenePos().y())
-        point_item = self.mapFromScene(point)
-        new_width = point_item.x() - self.rect().x()
-        new_y = point_item.y()
-        old_y = self.rect().y()
-        height_increase = old_y - new_y
-        new_height = point_item.y() - self.rect().y()
-        self.setRect(point_item.x() - new_width,
-                     point_item.y() - new_height,
-                     new_width, new_height)
+    def br_handle_moved(self, event, diff_x, diff_y):
+        old_x = self.rect().x()
+        old_y = self.rect().y() 
+        new_width = self.rect().width() + diff_x
+        new_height = self.rect().height() + diff_y
+        self.setRect(old_x, old_y, new_width, new_height)
         self.tr_circle.setPos(self.br_circle.pos().x(), 
                               self.br_circle.pos().y() - new_height)
         self.tl_circle.setPos(self.br_circle.pos().x() - new_width, 
@@ -155,6 +153,38 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.bl_circle.setPos(self.br_circle.pos().x() - new_width, 
                               self.br_circle.pos().y())
 
+
+    def release_handle(self):
+        """ User could have flipped the rect. sort it out 
+            otherwise there are side effects with mouse rollover events
+        """
+        r = self.rect()
+        x = r.x()
+        y = r.y()
+        width = r.width()
+        height = r.height()
+        if width < 0:
+            x = x + width
+            width = -width
+            # switch left and right locations
+            left = self.br_circle.pos().x()
+            right = self.tl_circle.pos().x()
+            self.tl_circle.setX(left)
+            self.bl_circle.setX(left)
+            self.tr_circle.setX(right)
+            self.br_circle.setX(right)
+        
+        if height < 0:
+            y = y + height
+            height = -height
+            # switch top and bottom locations
+            top = self.bl_circle.pos().y()
+            bottom = self.tl_circle.pos().y()
+            self.tl_circle.setY(top)
+            self.tr_circle.setY(top)
+            self.bl_circle.setY(bottom)
+            self.br_circle.setY(bottom)
+        self.setRect(x, y, width, height)
 
     def resize_drag(self, x, y):
         width = abs(x - self.x_start)
@@ -184,5 +214,6 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         QtWidgets.QApplication.instance().setOverrideCursor(Qt.ClosedHandCursor)
 
     def mouseReleaseEvent(self, event):
+        #QtWidgets.QApplication.instance().setOverrideCursor(Qt.ArrowCursor)
         QtWidgets.QApplication.restoreOverrideCursor()
         super().mouseReleaseEvent(event)

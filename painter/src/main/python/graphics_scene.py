@@ -45,8 +45,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         self.box_origin_x = None
         self.box_origin_y = None
         self.mouse_down = False
-
-
+ 
     def undo(self):
         if len(self.history) > 1:
             self.redo_list.append(self.history.pop().copy())
@@ -69,16 +68,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             self.parent.parent.update_viewer_annot_slice()
     
     def start_bounding_box(self):
-        #self.box_enabled = True
-        # specify parent to keep within a certain area.
-        #self.box = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Rectangle, self.parent.parent)
-        #self.rect_item = QtWidgets.QGraphicsRectItem(QtCore.QRectF(200, 200, 200, 200))
-        #self.rect_item.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
-        #self.rect_item.setPen(QtGui.QPen(QtGui.QColor(120, 120, 120), 1, QtCore.Qt.DashLine) )
-        #self.rect_item.setBrush(QtGui.QBrush(QtGui.QColor(40, 120, 200, 70),
-                                #style = QtCore.Qt.SolidPattern))
-
-        QtWidgets.QApplication.instance().setOverrideCursor(Qt.ArrowCursor)
+        QtWidgets.QApplication.instance().setOverrideCursor(Qt.CrossCursor)
         self.box_enabled = True
         
         print('start drawing bounding box now')
@@ -115,7 +105,8 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         
         if self.box_enabled:
             if self.bounding_box is None:
-                self.bounding_box = BoundingBox(event.scenePos().x(), event.scenePos().y())
+                self.bounding_box = BoundingBox(event.scenePos().x(),
+                                                event.scenePos().y(), self)
                 self.bounding_box.set_start(event.scenePos().x(), event.scenePos().y())
                 self.addItem(self.bounding_box) 
         elif not modifiers & QtCore.Qt.ControlModifier and self.parent.annot_visible:
@@ -163,7 +154,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
     
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
-        if self.box_enabled:
+        if self.box_enabled and self.bounding_box is not None:
             if self.mouse_down and self.box_resizing:
                 pos = event.scenePos()
                 x, y = pos.x(), pos.y()
