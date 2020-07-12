@@ -31,8 +31,6 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
         self.parent = parent
         self.setPen(QtGui.QPen(QtGui.QColor(250, 250, 250), 0.5, QtCore.Qt.DashLine))
         self.setBrush(QtGui.QBrush(QtGui.QColor(40, 120, 250), style = QtCore.Qt.SolidPattern))
-        #self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable, True)
-        #self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
         self.setAcceptHoverEvents(True)
         self.drag_start_x = None
         self.drag_start_y = None
@@ -73,7 +71,7 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
 class BoundingBox(QtWidgets.QGraphicsRectItem):
 
     def __init__(self, x, y, parent):
-        start_rect = QtCore.QRectF(x, y, 20, 20)
+        start_rect = QtCore.QRectF(0, 0, 20, 20)
         super().__init__(start_rect)
         self.parent = parent
         self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable, True)
@@ -94,7 +92,14 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         self.br_circle = Handle(x, y, self, Qt.SizeFDiagCursor)
         self.br_circle.on_move = self.br_handle_moved
         self.br_circle.on_release = self.release_handle
-        
+
+    def print_rect(self):
+        point = QtCore.QPoint(0, 0)
+        scenePos = self.mapToScene(point);
+        x = self.rect().x() + scenePos.x()
+        y = self.rect().y() + scenePos.y()
+        print('x:', x, 'y:', y, 'width:', self.rect().width(), 'height:', self.rect().height())
+
     def tl_handle_moved(self, event, diff_x, diff_y):
         new_x = self.rect().x() + diff_x
         old_x = self.rect().x()
@@ -111,6 +116,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
                               self.tl_circle.pos().y())
         self.br_circle.setPos(self.tl_circle.pos().x() + new_width, 
                               self.tl_circle.pos().y() + new_height)
+        self.print_rect()
 
     def bl_handle_moved(self, event, diff_x, diff_y):
         old_x = self.rect().x()
@@ -126,6 +132,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
                               self.bl_circle.pos().y() - new_height)
         self.br_circle.setPos(self.bl_circle.pos().x() + new_width, 
                               self.bl_circle.pos().y())
+        self.print_rect()
 
     def tr_handle_moved(self, event, diff_x, diff_y):
         old_x = self.rect().x()
@@ -139,6 +146,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
                               self.tr_circle.pos().y())
         self.bl_circle.setPos(self.tr_circle.pos().x() - new_width, 
                               self.tr_circle.pos().y() + new_height)
+        self.print_rect()
 
     def br_handle_moved(self, event, diff_x, diff_y):
         old_x = self.rect().x()
@@ -152,6 +160,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
                               self.br_circle.pos().y() - new_height)
         self.bl_circle.setPos(self.br_circle.pos().x() - new_width, 
                               self.br_circle.pos().y())
+        self.print_rect()
 
 
     def release_handle(self):
