@@ -74,6 +74,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         start_rect = QtCore.QRectF(0, 0, 20, 20)
         super().__init__(start_rect)
         self.parent = parent
+        self.first_resize = True
         self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable, True)
         self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable, True)
         self.setAcceptHoverEvents(True)
@@ -209,6 +210,7 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
     def set_start(self, x, y):
         self.x_start = x
         self.y_start = y
+        self.resize_drag(x, y)
 
     def hoverEnterEvent(self, event):
         QtWidgets.QApplication.instance().setOverrideCursor(Qt.OpenHandCursor)

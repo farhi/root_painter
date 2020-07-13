@@ -70,8 +70,6 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
     def start_bounding_box(self):
         QtWidgets.QApplication.instance().setOverrideCursor(Qt.CrossCursor)
         self.box_enabled = True
-        
-        print('start drawing bounding box now')
 
     def cancel_bounding_box(self):
         print('cancel bounding box not yet implemented') 
@@ -102,7 +100,6 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         super().mousePressEvent(event)
         modifiers = QtWidgets.QApplication.keyboardModifiers()
         self.mouse_down = True
-        
         if self.box_enabled:
             if self.bounding_box is None:
                 self.bounding_box = BoundingBox(event.scenePos().x(),
@@ -148,14 +145,15 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             self.parent.store_annot_slice()
             # update all views with new state.
             self.parent.parent.update_viewer_annot_slice()
-        if self.box_resizing:
-            self.box_resizing = False
 
+        if self.bounding_box is not None:
+            # first resize over.
+            self.bounding_box.first_resize = False
     
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
         if self.box_enabled and self.bounding_box is not None:
-            if self.mouse_down and self.box_resizing:
+            if self.mouse_down and self.bounding_box.first_resize:
                 pos = event.scenePos()
                 x, y = pos.x(), pos.y()
                 self.bounding_box.resize_drag(x, y)
