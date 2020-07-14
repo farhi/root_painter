@@ -101,6 +101,13 @@ class BoundingBox(QtWidgets.QGraphicsRectItem):
         y = self.rect().y() + scenePos.y()
         print('x:', x, 'y:', y, 'width:', self.rect().width(), 'height:', self.rect().height())
 
+    def scene_rect(self):
+        point = QtCore.QPoint(0, 0)
+        scenePos = self.mapToScene(point);
+        x = self.rect().x() + scenePos.x()
+        y = self.rect().y() + scenePos.y()
+        return x, y, self.rect().width(), self.rect().height()
+
     def tl_handle_moved(self, event, diff_x, diff_y):
         new_x = self.rect().x() + diff_x
         old_x = self.rect().x()
