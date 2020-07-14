@@ -16,12 +16,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # pylint: disable=I1101, C0111, E0611, R0902
 """ Canvas where image and annotations can be drawn """
+import os
+import numpy as np
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
-from bounding_box import BoundingBox
+import nibabel as nib
 
+from bounding_box import BoundingBox
 
 class GraphicsScene(QtWidgets.QGraphicsScene):
     """
@@ -78,23 +81,21 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
 
 
     def apply_bounding_box(self):
-        x = self.bounding_box.scenePos().x() + self.bounding_box.rect().x()
-        y = self.bounding_box.scenePos().y() + self.bounding_box.rect().y()
-        w = self.bounding_box.rect().width()
-        h = self.bounding_box.rect().height()
-
-        # just for testing, draw the information to a pixmap.
-
-        painter = QtGui.QPainter(self.annot_pixmap)
-        painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
-        painter.drawPixmap(0, 0, self.annot_pixmap)
-        painter.setPen(QtGui.QPen(self.parent.brush_color, 0, Qt.SolidLine,
-                                  Qt.RoundCap, Qt.RoundJoin))
-        painter.setBrush(QtGui.QBrush(self.parent.brush_color, Qt.SolidPattern))
-        painter.drawRect(x, y, w, h)
-        self.annot_pixmap_holder.setPixmap(self.annot_pixmap)
-        painter.end()
-
+        """ Save the bounded image and show loading icon
+            as the segmentation will now be loading """
+        x, y, w, h = (int(i) for i in self.bounding_box.scene_rect())
+        bounded_im = self.parent.parent.img_data[:, y:y+h, x:x+w]
+        im_fpath = self.parent.parent.image_path
+        im_fname = os.path.basename(im_fpath)
+        proj_location = self.parent.parent.proj_location
+        bounded_im_dir = os.path.join(proj_location, 'bounded_images')
+        bounded_im_name = os.path.splitext(im_fname)[0]
+        bounded_im_name += f"_{x}_{y}.nii.gz"
+        bounded_im_fpath = os.path.join(bounded_im_dir, bounded_im_name)
+        img = nib.Nifti1Image(bounded_im, np.eye(4))
+        img.to_filename(bounded_im_fpath)
+        QtWidgets.QApplication.instance().setOverrideCursor(Qt.BusyCursor)
+        self.removeItem(self.bounding_box)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
