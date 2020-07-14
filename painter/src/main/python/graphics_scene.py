@@ -79,6 +79,15 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         #self.bounding_box = None
         #self.box_enabled = False
 
+    def update_bounding_box(self):
+        """ bounding box could have been updated from annother
+            view. Set the bounding box to appear correctly in this
+            view. """
+        if self.mode == 'coronal':
+            pass
+            # self.parent.box 
+            # self.box_coords
+
 
     def apply_bounding_box(self):
         """ Save the bounded image and show loading icon

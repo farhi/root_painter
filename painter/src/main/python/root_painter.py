@@ -77,6 +77,7 @@ class RootPainter(QtWidgets.QMainWindow):
 
         self.annot_data = None
         self.seg_data = None
+        self.box = {'x':20, 'y':20, 'z': 20, 'width': 50, 'height': 50, 'depth': 20}
         self.initUI()
 
     def initUI(self):
@@ -365,7 +366,6 @@ class RootPainter(QtWidgets.QMainWindow):
             self.sagittal_viewer.update_annot_slice()
         if self.coronal_viewer.isVisible(): 
             self.coronal_viewer.update_annot_slice()
-
 
     def init_active_project_ui(self):
         # container for both nav and im_viewer.
